@@ -1,24 +1,109 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+/**
+ * Rewind — Root Layout
+ * 
+ * Sets up:
+ * - Plus Jakarta Sans font loading
+ * - SQLiteProvider with migrations
+ * - Theme provider (Cherry Blossom)
+ * - Stack navigator with fade transitions
+ * - First-launch name prompt
+ */
+
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { View, StyleSheet } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
+import { SQLiteProvider } from 'expo-sqlite';
+import {
+  useFonts,
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+  PlusJakartaSans_800ExtraBold,
+} from '@expo-google-fonts/plus-jakarta-sans';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { ThemeProvider, useTheme } from '@/src/theme/ThemeContext';
+import { Colors } from '@/src/theme/colors';
+import { DATABASE_NAME, migrateDbIfNeeded } from '@/src/db/database';
+import NamePrompt from '@/src/components/NamePrompt';
+
+// Keep splash screen visible while loading fonts
+SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
   anchor: '(tabs)',
 };
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+function AppContent() {
+  const { isFirstLaunch, setUserName } = useTheme();
+
+  const handleNameSubmit = (name: string) => {
+    setUserName(name);
+  };
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
+    <View style={styles.container}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: Colors.surface },
+          animation: 'fade',
+          animationDuration: 400,
+        }}
+      >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        <Stack.Screen
+          name="modal"
+          options={{
+            presentation: 'modal',
+            title: 'Modal',
+            animation: 'slide_from_bottom',
+          }}
+        />
       </Stack>
-      <StatusBar style="auto" />
+
+      {/* First-launch name prompt overlay */}
+      {isFirstLaunch && <NamePrompt onSubmit={handleNameSubmit} />}
+      
+      <StatusBar style="dark" />
+    </View>
+  );
+}
+
+export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+    PlusJakartaSans_800ExtraBold,
+  });
+
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
+  return (
+    <ThemeProvider>
+      <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
+        <AppContent />
+      </SQLiteProvider>
     </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+  },
+});

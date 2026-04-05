@@ -1,34 +1,41 @@
+/**
+ * Rewind — Tab Layout
+ * 
+ * 4-tab navigator with custom glassmorphic tab bar.
+ * Tabs: Home, Add, Points, Profile
+ * All tabs sit flush (no elevation on Add button per user's preference).
+ */
+
 import { Tabs } from 'expo-router';
 import React from 'react';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import GlassTabBar from '@/src/components/GlassTabBar';
+import { Colors } from '@/src/theme/colors';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
+      tabBar={(props) => <GlassTabBar {...props} />}
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+        tabBarStyle: { display: 'none' }, // Hidden — we use custom GlassTabBar
+      }}
+    >
       <Tabs.Screen
         name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-        }}
+        options={{ title: 'Home' }}
       />
       <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
-        }}
+        name="add"
+        options={{ title: 'Add' }}
+      />
+      <Tabs.Screen
+        name="points"
+        options={{ title: 'Points' }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{ title: 'Profile' }}
       />
     </Tabs>
   );

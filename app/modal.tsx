@@ -1,17 +1,28 @@
-import { Link } from 'expo-router';
-import { StyleSheet } from 'react-native';
+/**
+ * Rewind — Modal Screen (placeholder for future use)
+ */
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Colors } from '@/src/theme/colors';
+import { FontFamily } from '@/src/theme/typography';
+import { Spacing, Radius } from '@/src/theme/spacing';
 
 export default function ModalScreen() {
+  const router = useRouter();
+
   return (
-    <ThemedView style={styles.container}>
-      <ThemedText type="title">This is a modal</ThemedText>
-      <Link href="/" dismissTo style={styles.link}>
-        <ThemedText type="link">Go to home screen</ThemedText>
-      </Link>
-    </ThemedView>
+    <View style={styles.container}>
+      <Text style={styles.title}>🌸</Text>
+      <Text style={styles.subtitle}>Modal</Text>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => router.back()}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.buttonText}>Go back</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -20,10 +31,28 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    backgroundColor: Colors.surface,
+    padding: Spacing.breathe,
   },
-  link: {
-    marginTop: 15,
-    paddingVertical: 15,
+  title: {
+    fontSize: 48,
+    marginBottom: Spacing.cozy,
+  },
+  subtitle: {
+    fontFamily: FontFamily.bold,
+    fontSize: 24,
+    color: Colors.on_surface,
+    marginBottom: Spacing.generous,
+  },
+  button: {
+    paddingHorizontal: Spacing.breathe,
+    paddingVertical: Spacing.cozy,
+    backgroundColor: Colors.primary_container,
+    borderRadius: Radius.full,
+  },
+  buttonText: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: 16,
+    color: Colors.primary,
   },
 });
