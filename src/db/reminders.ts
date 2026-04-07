@@ -7,24 +7,45 @@
 
 import { type SQLiteDatabase } from 'expo-sqlite';
 import type { Reminder, CreateReminderInput, ReminderWithStatus, CompletionLog } from './types';
+import { formatDateKey } from './types';
+import { ensureDbSchema } from './database';
 
 export async function createReminder(
   db: SQLiteDatabase,
   input: CreateReminderInput
 ): Promise<number> {
+  await ensureDbSchema(db);
+
+  const normalizedInput = {
+    name: input.name.trim(),
+    description: input.description?.trim() || null,
+    type: input.type,
+    icon: input.icon,
+    frequency: input.frequency,
+    time_hour: Number(input.time_hour),
+    time_minute: Number(input.time_minute),
+    day_of_week: input.day_of_week ?? null,
+    day_of_month: input.day_of_month ?? null,
+    once_date: input.once_date ?? null,
+    sound_id: input.sound_id ?? null,
+  };
+
   const result = await db.runAsync(
-    `INSERT INTO reminders (name, description, type, icon, frequency, time_hour, time_minute, day_of_week, day_of_month, sound_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    input.name,
-    input.description ?? null,
-    input.type,
-    input.icon,
-    input.frequency,
-    input.time_hour,
-    input.time_minute,
-    input.day_of_week ?? null,
-    input.day_of_month ?? null,
-    input.sound_id ?? null
+    `INSERT INTO reminders (name, description, type, icon, frequency, time_hour, time_minute, day_of_week, day_of_month, once_date, sound_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      normalizedInput.name,
+      normalizedInput.description,
+      normalizedInput.type,
+      normalizedInput.icon,
+      normalizedInput.frequency,
+      normalizedInput.time_hour,
+      normalizedInput.time_minute,
+      normalizedInput.day_of_week,
+      normalizedInput.day_of_month,
+      normalizedInput.once_date,
+      normalizedInput.sound_id,
+    ]
   );
   return result.lastInsertRowId;
 }
@@ -43,17 +64,28 @@ export async function getRemindersWithTodayStatus(
   db: SQLiteDatabase
 ): Promise<ReminderWithStatus[]> {
   const reminders = await getReminders(db);
-  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const today = formatDateKey(now);
+  const todayDayOfWeek = now.getDay();
+  const todayDayOfMonth = now.getDate();
 
   const completions = await db.getAllAsync<CompletionLog>(
     `SELECT * FROM completion_log WHERE date(completed_at) = ?`,
     today
   );
 
-  return reminders.map((r) => ({
-    ...r,
-    todayCompletion: completions.find((c) => c.reminder_id === r.id) ?? null,
-  }));
+  return reminders
+    .filter((reminder) => {
+      if (reminder.frequency === 'daily') return true;
+      if (reminder.frequency === 'weekly') return reminder.day_of_week === todayDayOfWeek;
+      if (reminder.frequency === 'monthly') return reminder.day_of_month === todayDayOfMonth;
+      if (reminder.frequency === 'once') return reminder.once_date === today;
+      return false;
+    })
+    .map((r) => ({
+      ...r,
+      todayCompletion: completions.find((c) => c.reminder_id === r.id) ?? null,
+    }));
 }
 
 export async function getReminderById(
@@ -80,6 +112,7 @@ export async function updateReminder(
   if (updates.time_minute !== undefined) { fields.push('time_minute = ?'); values.push(updates.time_minute); }
   if (updates.day_of_week !== undefined) { fields.push('day_of_week = ?'); values.push(updates.day_of_week); }
   if (updates.day_of_month !== undefined) { fields.push('day_of_month = ?'); values.push(updates.day_of_month); }
+  if (updates.once_date !== undefined) { fields.push('once_date = ?'); values.push(updates.once_date); }
   if (updates.sound_id !== undefined) { fields.push('sound_id = ?'); values.push(updates.sound_id); }
 
   if (fields.length === 0) return;

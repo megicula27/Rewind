@@ -30,8 +30,12 @@ export default function TabLayout() {
         options={{ title: 'Add' }}
       />
       <Tabs.Screen
-        name="points"
+        name="points-screen"
         options={{ title: 'Points' }}
+      />
+      <Tabs.Screen
+        name="points"
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="profile"

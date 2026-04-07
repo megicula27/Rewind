@@ -6,7 +6,7 @@
  * The timer runs throughout the day until tapped again to stop.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -34,12 +34,12 @@ import { useTheme } from '../theme/ThemeContext';
 import { FontFamily } from '../theme/typography';
 
 const TIMER_OPTIONS = [
-  { label: '15 min', minutes: 15 },
-  { label: '30 min', minutes: 30 },
-  { label: '45 min', minutes: 45 },
-  { label: '1 hour', minutes: 60 },
-  { label: '1.5 hr', minutes: 90 },
-  { label: '2 hours', minutes: 120 },
+  { label: '10 sec', seconds: 10 },
+  { label: '15 min', seconds: 15 * 60 },
+  { label: '30 min', seconds: 30 * 60 },
+  { label: '45 min', seconds: 45 * 60 },
+  { label: '1 hour', seconds: 60 * 60 },
+  { label: '2 hours', seconds: 120 * 60 },
 ];
 
 interface WaterDropButtonProps {
@@ -47,20 +47,28 @@ interface WaterDropButtonProps {
 }
 
 export default function WaterDropButton(_props: WaterDropButtonProps) {
-  const { colors } = useTheme();
+  const {
+    colors,
+    hydrationTimerSeconds,
+    hydrationTimeRemaining,
+    isHydrationTimerRunning,
+  } = useTheme();
   const [showOverlay, setShowOverlay] = useState(false);
-  const [selectedTimer, setSelectedTimer] = useState<number | null>(null);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const styles = createStyles(colors);
+  const isTimerRunning = isHydrationTimerRunning;
+  const timeRemaining = hydrationTimeRemaining;
+  const selectedTimer = hydrationTimerSeconds;
+  const timerRef = { current: null as ReturnType<typeof setInterval> | null };
+  const setSelectedTimer = (_seconds: number | null) => {};
+  const setTimeRemaining = (_value: number | ((previous: number) => number)) => {};
+  const setIsTimerRunning = (_running: boolean) => {};
 
   // Pulse animation for the water drop when timer is active
   const pulseScale = useSharedValue(1);
   const dropBounce = useSharedValue(1);
 
   useEffect(() => {
-    if (isTimerRunning) {
+    if (isHydrationTimerRunning) {
       pulseScale.value = withRepeat(
         withSequence(
           withTiming(1.15, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
@@ -72,7 +80,7 @@ export default function WaterDropButton(_props: WaterDropButtonProps) {
     } else {
       pulseScale.value = withTiming(1, { duration: 300 });
     }
-  }, [isTimerRunning, pulseScale]);
+  }, [isHydrationTimerRunning, pulseScale]);
 
   useEffect(() => {
     if (isTimerRunning && timeRemaining > 0) {
@@ -81,7 +89,7 @@ export default function WaterDropButton(_props: WaterDropButtonProps) {
           if (prev <= 1) {
             // Timer finished — notify user
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            return selectedTimer ? selectedTimer * 60 : 0; // restart timer
+            return selectedTimer ?? 0;
           }
           return prev - 1;
         });
@@ -109,10 +117,10 @@ export default function WaterDropButton(_props: WaterDropButtonProps) {
     }
   };
 
-  const handleSelectTimer = (minutes: number) => {
+  const handleSelectTimer = (seconds: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setSelectedTimer(minutes);
-    setTimeRemaining(minutes * 60);
+    setSelectedTimer(seconds);
+    setTimeRemaining(seconds);
     setIsTimerRunning(true);
     setShowOverlay(false);
   };
@@ -182,18 +190,18 @@ export default function WaterDropButton(_props: WaterDropButtonProps) {
             <View style={styles.timerGrid}>
               {TIMER_OPTIONS.map((option) => (
                 <TouchableOpacity
-                  key={option.minutes}
+                  key={option.seconds}
                   style={[
                     styles.timerOption,
-                    selectedTimer === option.minutes && styles.timerOptionActive,
+                    selectedTimer === option.seconds && styles.timerOptionActive,
                   ]}
-                  onPress={() => handleSelectTimer(option.minutes)}
+                  onPress={() => handleSelectTimer(option.seconds)}
                   activeOpacity={0.7}
                 >
                   <Text
                     style={[
                       styles.timerOptionText,
-                      selectedTimer === option.minutes && styles.timerOptionTextActive,
+                      selectedTimer === option.seconds && styles.timerOptionTextActive,
                     ]}
                   >
                     {option.label}

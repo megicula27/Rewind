@@ -12,7 +12,7 @@
 import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { SQLiteProvider } from 'expo-sqlite';
 import {
@@ -29,6 +29,8 @@ import { ThemeProvider, useTheme } from '@/src/theme/ThemeContext';
 import { Colors } from '@/src/theme/colors';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/src/db/database';
 import NamePrompt from '@/src/components/NamePrompt';
+import NotificationBootstrap from '@/src/components/NotificationBootstrap';
+import NotificationSoundBridge from '@/src/components/NotificationSoundBridge';
 
 // Keep splash screen visible while loading fonts
 SplashScreen.preventAutoHideAsync();
@@ -92,9 +94,19 @@ export default function RootLayout() {
     return null;
   }
 
+  if (Platform.OS === 'web') {
+    return (
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider>
+      <NotificationSoundBridge />
       <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
+        <NotificationBootstrap />
         <AppContent />
       </SQLiteProvider>
     </ThemeProvider>

@@ -4,6 +4,8 @@
 
 import { type SQLiteDatabase } from 'expo-sqlite';
 import type { CompletionLog } from './types';
+import { formatDateKey, formatDateTimeKey } from './types';
+import { updatePoints, updateStreak } from './points';
 
 export function calculatePoints(dialValue: number): number {
   if (dialValue === 10) return 10;
@@ -21,24 +23,24 @@ export async function logCompletion(
   dialValue: number
 ): Promise<CompletionLog> {
   const pointsEarned = calculatePoints(dialValue);
+  const completedAt = formatDateTimeKey(new Date());
 
   const result = await db.runAsync(
-    `INSERT INTO completion_log (reminder_id, dial_value, points_earned)
-     VALUES (?, ?, ?)`,
+    `INSERT INTO completion_log (reminder_id, completed_at, dial_value, points_earned)
+     VALUES (?, ?, ?, ?)`,
     reminderId,
+    completedAt,
     dialValue,
     pointsEarned
   );
 
-  await db.runAsync(
-    `UPDATE points SET total_points = MAX(0, total_points + ?) WHERE id = 1`,
-    pointsEarned
-  );
+  await updatePoints(db, pointsEarned);
+  await updateStreak(db);
 
   return {
     id: result.lastInsertRowId,
     reminder_id: reminderId,
-    completed_at: new Date().toISOString(),
+    completed_at: completedAt,
     dial_value: dialValue,
     points_earned: pointsEarned,
   };
@@ -47,7 +49,7 @@ export async function logCompletion(
 export async function getTodayCompletions(
   db: SQLiteDatabase
 ): Promise<CompletionLog[]> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatDateKey(new Date());
   return db.getAllAsync<CompletionLog>(
     `SELECT * FROM completion_log WHERE date(completed_at) = ?`,
     today

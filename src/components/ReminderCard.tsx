@@ -33,6 +33,7 @@ export interface ReminderCardProps {
   dialValue?: number; // 0–10, shown if partially completed
   onPress?: () => void;
   onToggleComplete?: () => void;
+  onLongPress?: () => void;
   index?: number; // for alternating backgrounds
 }
 
@@ -55,6 +56,7 @@ export default function ReminderCard({
   dialValue,
   onPress,
   onToggleComplete,
+  onLongPress,
   index = 0,
 }: ReminderCardProps) {
   const pressed = useSharedValue(false);
@@ -81,6 +83,8 @@ export default function ReminderCard({
       onPressIn={() => { pressed.value = true; }}
       onPressOut={() => { pressed.value = false; }}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={320}
       style={[styles.card, cardAnimatedStyle, { backgroundColor: bgColor }]}
       accessibilityRole="button"
       accessibilityLabel={`${name}, ${timeLabel}${isCompleted ? ', completed' : ''}`}

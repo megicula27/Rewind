@@ -17,7 +17,7 @@
  *   - Warm, unhurried copy
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -32,15 +32,28 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 
 import { Colors } from '@/src/theme/colors';
 import { FontFamily } from '@/src/theme/typography';
 import { Spacing, Radius, TapTargets } from '@/src/theme/spacing';
 import { Elevation } from '@/src/theme/elevation';
 import { useReminders } from '@/src/hooks/useReminders';
-import type { ReminderType, ReminderFrequency } from '@/src/db/types';
+import { useSounds } from '@/src/hooks/useSounds';
+import SoundStudioSheet from '@/src/components/SoundStudioSheet';
+import QuoteFooter from '@/src/components/QuoteFooter';
+import type { ReminderType, ReminderFrequency, Sound } from '@/src/db/types';
+import { formatDateKey, formatReminderDate } from '@/src/db/types';
+import {
+  getSoundVisual,
+  MAX_CUSTOM_SOUND_BYTES,
+  resolveSoundPlaybackSource,
+} from '@/src/sounds/catalog';
+import { copyClipToSoundLibraryAsync } from '@/src/sounds/storage';
 
 // ── Type config ─────────────────────────────────────
 const TYPES: { key: ReminderType; label: string; icon: string; materialIcon: string }[] = [
@@ -54,6 +67,7 @@ const FREQUENCIES: { key: ReminderFrequency; label: string }[] = [
   { key: 'daily',   label: 'Daily' },
   { key: 'weekly',  label: 'Weekly' },
   { key: 'monthly', label: 'Monthly' },
+  { key: 'once',    label: 'Once' },
 ];
 
 const DAYS_OF_WEEK = [
@@ -66,30 +80,61 @@ const DAYS_OF_WEEK = [
   { key: 6, label: 'S', full: 'Saturday' },
 ];
 
-const DEFAULT_SOUNDS = [
-  { id: 1, name: 'Rain on a Tin Roof', icon: 'weather-rainy', color: '#90CAF9', bg: '#E3F2FD' },
-  { id: 2, name: 'Soft Morning Chime', icon: 'bell-outline', color: '#FFB74D', bg: '#FFF3E0' },
-  { id: 3, name: 'Forest Songbirds',   icon: 'bird', color: '#81C784', bg: '#E8F5E9' },
-];
+function formatDurationLabel(durationMs: number | null) {
+  if (!durationMs || durationMs <= 0) {
+    return null;
+  }
+
+  const totalSeconds = Math.max(1, Math.round(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function createCurrentReminderTime() {
+  const now = new Date();
+  return new Date(2024, 0, 1, now.getHours(), now.getMinutes(), 0, 0);
+}
 
 export default function AddScreen() {
   const insets = useSafeAreaInsets();
   const { addReminder } = useReminders();
+  const { sounds, loading: soundsLoading, createCustomSound, removeCustomSound } = useSounds();
+  const previewPlayer = useAudioPlayer(null);
+  const previewStatus = useAudioPlayerStatus(previewPlayer);
 
   // ── Form state ─────────────────────────────
   const [selectedType, setSelectedType] = useState<ReminderType>('food');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [time, setTime] = useState(new Date(2024, 0, 1, 8, 30));
+  const [time, setTime] = useState(() => createCurrentReminderTime());
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [frequency, setFrequency] = useState<ReminderFrequency>('daily');
   const [dayOfWeek, setDayOfWeek] = useState(1); // Monday
   const [dayOfMonth, setDayOfMonth] = useState(1);
-  const [selectedSound, setSelectedSound] = useState(1);
+  const [onceDate, setOnceDate] = useState(new Date());
+  const [showOnceDatePicker, setShowOnceDatePicker] = useState(false);
+  const [selectedSound, setSelectedSound] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingSound, setIsUploadingSound] = useState(false);
+  const [previewingSoundId, setPreviewingSoundId] = useState<number | null>(null);
+  const [isStudioOpen, setIsStudioOpen] = useState(false);
 
   const isCustom = selectedType === 'custom';
   const typeConfig = TYPES.find(t => t.key === selectedType)!;
+  const selectedSoundRecord = sounds.find((sound) => sound.id === selectedSound) ?? sounds[0] ?? null;
+
+  useEffect(() => {
+    if (!selectedSound && sounds.length > 0) {
+      setSelectedSound(sounds[0].id);
+    }
+  }, [selectedSound, sounds]);
+
+  useEffect(() => {
+    if (!previewStatus.playing && previewingSoundId !== null) {
+      setPreviewingSoundId(null);
+    }
+  }, [previewStatus.playing, previewingSoundId]);
 
   // Auto-generate name for non-custom types
   const getDefaultName = (type: ReminderType) => {
@@ -106,6 +151,142 @@ export default function AddScreen() {
     if (selectedDate) {
       setTime(selectedDate);
     }
+  };
+
+  const handleOnceDateChange = (_: any, selectedDate?: Date) => {
+    setShowOnceDatePicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setOnceDate(selectedDate);
+    }
+  };
+
+  const handlePreviewSound = async (sound: Sound) => {
+    try {
+      if (previewingSoundId === sound.id && previewStatus.playing) {
+        previewPlayer.pause();
+        setPreviewingSoundId(null);
+        return;
+      }
+
+      previewPlayer.replace(resolveSoundPlaybackSource(sound));
+      await previewPlayer.seekTo(0);
+      previewPlayer.play();
+      setPreviewingSoundId(sound.id);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (error) {
+      console.error('Failed to preview sound:', error);
+      Alert.alert('Preview unavailable', 'That clip could not be previewed right now.');
+    }
+  };
+
+  const saveCustomClip = async (input: {
+    name: string;
+    uri: string;
+    durationMs: number | null;
+    type: 'recorded' | 'file';
+  }) => {
+    const copiedUri = await copyClipToSoundLibraryAsync(input.uri, input.name);
+    const created = await createCustomSound({
+      name: input.name,
+      type: input.type,
+      fileUri: copiedUri,
+      durationMs: input.durationMs ?? null,
+    });
+
+    setSelectedSound(created.id);
+    await handlePreviewSound(created);
+  };
+
+  const handleRecordedSoundSaved = async (recording: {
+    name: string;
+    uri: string;
+    durationMs: number;
+    fileSize: number;
+  }) => {
+    await saveCustomClip({
+      name: recording.name,
+      uri: recording.uri,
+      durationMs: recording.durationMs,
+      type: 'recorded',
+    });
+  };
+
+  const handleUploadSound = async () => {
+    try {
+      setIsUploadingSound(true);
+
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['audio/*'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled || !result.assets?.[0]) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      const fileSize = asset.size ?? 0;
+      if (fileSize > MAX_CUSTOM_SOUND_BYTES) {
+        Alert.alert(
+          'Clip is too large',
+          'Please choose an audio clip under 1 MB so reminders stay lightweight.'
+        );
+        return;
+      }
+
+      const info = await FileSystem.getInfoAsync(asset.uri);
+      if (!info.exists) {
+        throw new Error('Picked clip was unavailable.');
+      }
+
+      await saveCustomClip({
+        name: asset.name.replace(/\.[^.]+$/, '') || 'Uploaded Clip',
+        uri: asset.uri,
+        durationMs: null,
+        type: 'file',
+      });
+    } catch (error) {
+      console.error('Failed to upload sound:', error);
+      Alert.alert('Upload did not work', 'Please try another clip or try again.');
+    } finally {
+      setIsUploadingSound(false);
+    }
+  };
+
+  const handleRemoveSound = (sound: Sound) => {
+    if (sound.type === 'default') {
+      return;
+    }
+
+    Alert.alert(
+      'Remove sound?',
+      `Remove "${sound.name}" from your sound garden?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (previewingSoundId === sound.id && previewStatus.playing) {
+                previewPlayer.pause();
+                setPreviewingSoundId(null);
+              }
+
+              await removeCustomSound(sound.id);
+              if (selectedSound === sound.id) {
+                const fallback = sounds.find((item) => item.id !== sound.id && item.type === 'default') ?? sounds.find((item) => item.id !== sound.id) ?? null;
+                setSelectedSound(fallback?.id ?? null);
+              }
+            } catch (error) {
+              console.error('Failed to remove sound:', error);
+              Alert.alert('Could not remove sound', 'Please try again in a moment.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleCreate = async () => {
@@ -130,6 +311,8 @@ export default function AddScreen() {
         time_minute: time.getMinutes(),
         day_of_week: frequency === 'weekly' ? dayOfWeek : undefined,
         day_of_month: frequency === 'monthly' ? dayOfMonth : undefined,
+        once_date: frequency === 'once' ? formatDateKey(onceDate) : undefined,
+        sound_id: selectedSoundRecord?.id ?? undefined,
       });
 
       // Reset form
@@ -137,7 +320,9 @@ export default function AddScreen() {
       setDescription('');
       setSelectedType('food');
       setFrequency('daily');
-      setTime(new Date(2024, 0, 1, 8, 30));
+      setTime(createCurrentReminderTime());
+      setOnceDate(new Date());
+      setSelectedSound(sounds[0]?.id ?? null);
       
       Alert.alert('Blooming! 🌸', 'Your reminder has been created.');
     } catch (err) {
@@ -165,10 +350,13 @@ export default function AddScreen() {
         style={styles.header}
       >
         <LinearGradient
-          colors={[`${Colors.primary_container}CC`, `${Colors.primary_container}99`]}
+          colors={[`${Colors.primary_fixed}F5`, `${Colors.primary_fixed}D8`]}
           style={styles.headerGradient}
         >
           <View style={styles.headerRow}>
+            <View style={styles.headerEmojiBadge}>
+              <Text style={styles.headerEmoji}>🌸</Text>
+            </View>
             <Text style={styles.headerTitle}>New Reminder</Text>
           </View>
         </LinearGradient>
@@ -442,6 +630,36 @@ export default function AddScreen() {
               </ScrollView>
             </Animated.View>
           )}
+
+          {frequency === 'once' && (
+            <Animated.View entering={FadeInDown.duration(300)} style={styles.daySelector}>
+              <Text style={styles.daySelectorLabel}>Which day?</Text>
+              <TouchableOpacity
+                style={styles.onceDateCard}
+                onPress={() => setShowOnceDatePicker(true)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={`Selected date: ${formatReminderDate(formatDateKey(onceDate))}`}
+              >
+                <View>
+                  <Text style={styles.onceDateValue}>{formatReminderDate(formatDateKey(onceDate))}</Text>
+                  <Text style={styles.onceDateHint}>Tap to choose a one-time reminder date</Text>
+                </View>
+                <MaterialCommunityIcons name="calendar-month-outline" size={24} color={Colors.primary} />
+              </TouchableOpacity>
+
+              {showOnceDatePicker && (
+                <DateTimePicker
+                  value={onceDate}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleOnceDateChange}
+                  themeVariant="light"
+                  minimumDate={new Date()}
+                />
+              )}
+            </Animated.View>
+          )}
         </Animated.View>
 
         {/* ── Step 4: Sound ──────────────────────── */}
@@ -450,49 +668,103 @@ export default function AddScreen() {
 
           {/* Record / Upload buttons */}
           <View style={styles.soundActions}>
-            <TouchableOpacity style={styles.soundActionBtn} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.soundActionBtn}
+              activeOpacity={0.7}
+              onPress={() => setIsStudioOpen(true)}
+            >
               <MaterialCommunityIcons name="microphone" size={22} color={Colors.on_surface} />
               <Text style={styles.soundActionText}>Record Voice</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.soundActionBtn, styles.soundActionBtnSecondary]} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={[styles.soundActionBtn, styles.soundActionBtnSecondary]}
+              activeOpacity={0.7}
+              onPress={handleUploadSound}
+              disabled={isUploadingSound}
+            >
               <MaterialCommunityIcons name="upload" size={22} color={Colors.on_surface} />
-              <Text style={styles.soundActionText}>Upload Clip</Text>
+              <Text style={styles.soundActionText}>
+                {isUploadingSound ? 'Uploading...' : 'Upload Clip'}
+              </Text>
             </TouchableOpacity>
           </View>
 
-          {/* Default sounds */}
+          <View style={styles.soundHeroCard}>
+            <LinearGradient
+              colors={['#FFE2EB', '#FFF7F9']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.soundHeroGradient}
+            >
+              <View style={styles.soundHeroCopy}>
+                <Text style={styles.soundHeroTitle}>Sakura listens softly.</Text>
+                <Text style={styles.soundHeroSubtitle}>
+                  Bundled sounds ring inside notifications now. Recorded and uploaded clips are
+                  saved, previewable, and ready in your sound garden.
+                </Text>
+              </View>
+              <View style={styles.soundHeroBadge}>
+                <Text style={styles.soundHeroBadgeText}>1 MB max</Text>
+              </View>
+            </LinearGradient>
+          </View>
+
           <View style={styles.soundList}>
-            {DEFAULT_SOUNDS.map((sound) => {
-              const isSelected = selectedSound === sound.id;
-              return (
-                <TouchableOpacity
-                  key={sound.id}
-                  style={[
-                    styles.soundItem,
-                    isSelected && styles.soundItemActive,
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSelectedSound(sound.id);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.soundIcon, { backgroundColor: sound.bg }]}>
+            {soundsLoading ? (
+              <Text style={styles.soundLoadingText}>Preparing your sound garden...</Text>
+            ) : (
+              sounds.map((sound) => {
+                const isSelected = selectedSound === sound.id;
+                const isPreviewing = previewingSoundId === sound.id && previewStatus.playing;
+                const visual = getSoundVisual(sound);
+                const durationLabel = formatDurationLabel(sound.duration_ms);
+
+                return (
+                  <TouchableOpacity
+                    key={sound.id}
+                    style={[styles.soundItem, isSelected && styles.soundItemActive]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSelectedSound(sound.id);
+                    }}
+                    onLongPress={() => handleRemoveSound(sound)}
+                    delayLongPress={320}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.soundIconBubble, { backgroundColor: visual.backgroundColor }]}>
+                      <Text style={styles.soundEmoji}>{visual.emoji}</Text>
+                    </View>
+
+                    <View style={styles.soundMeta}>
+                      <Text style={styles.soundName}>{sound.name}</Text>
+                      <Text style={styles.soundCaption}>
+                        {durationLabel ?? visual.caption ?? (sound.type === 'default' ? 'Bundled tone' : 'Custom clip')}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[styles.previewButton, isPreviewing && styles.previewButtonActive]}
+                      onPress={() => {
+                        void handlePreviewSound(sound);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialCommunityIcons
+                        name={isPreviewing ? 'pause' : 'play'}
+                        size={18}
+                        color={isPreviewing ? Colors.on_primary : Colors.primary}
+                      />
+                    </TouchableOpacity>
+
                     <MaterialCommunityIcons
-                      name={sound.icon as any}
-                      size={22}
-                      color={sound.color}
+                      name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24}
+                      color={isSelected ? Colors.primary : Colors.outline}
                     />
-                  </View>
-                  <Text style={styles.soundName}>{sound.name}</Text>
-                  <MaterialCommunityIcons
-                    name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24}
-                    color={isSelected ? Colors.primary : Colors.outline}
-                  />
-                </TouchableOpacity>
-              );
-            })}
+                  </TouchableOpacity>
+                );
+              })
+            )}
           </View>
         </Animated.View>
 
@@ -523,11 +795,15 @@ export default function AddScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
-          <Text style={styles.quoteText}>
-            "Every small step is a giant leap for your heart."
-          </Text>
+          <QuoteFooter scope="add-tab-footer" />
         </Animated.View>
       </ScrollView>
+
+      <SoundStudioSheet
+        visible={isStudioOpen}
+        onClose={() => setIsStudioOpen(false)}
+        onSave={handleRecordedSoundSaved}
+      />
     </View>
   );
 }
@@ -563,7 +839,7 @@ const styles = StyleSheet.create({
   blobBottom: {
     width: 250,
     height: 250,
-    backgroundColor: Colors.secondary_container,
+    backgroundColor: Colors.primary_fixed,
     bottom: 100,
     right: -40,
     ...({ filter: 'blur(60px)' }),
@@ -583,6 +859,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.compact,
+  },
+  headerEmojiBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary_container,
+    ...Elevation.low,
+  },
+  headerEmoji: {
+    fontSize: 17,
   },
   headerTitle: {
     fontFamily: FontFamily.bold,
@@ -632,14 +921,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: Spacing.generous,
-    backgroundColor: Colors.surface_container_highest,
+    backgroundColor: Colors.primary_fixed,
     borderRadius: Radius.lg,
     minHeight: 100,
     ...Elevation.low,
   },
   typeButtonActive: {
     backgroundColor: Colors.primary_container,
-    ...Elevation.medium,
+    ...Elevation.low,
   },
   typeLabel: {
     fontFamily: FontFamily.bold,
@@ -650,7 +939,7 @@ const styles = StyleSheet.create({
 
   // Input fields
   input: {
-    backgroundColor: Colors.surface_container_highest,
+    backgroundColor: Colors.primary_fixed,
     borderRadius: Radius.lg,
     paddingHorizontal: Spacing.generous,
     paddingVertical: Spacing.cozy,
@@ -666,7 +955,7 @@ const styles = StyleSheet.create({
 
   // Time picker
   timePickerCard: {
-    backgroundColor: Colors.surface_container_low,
+    backgroundColor: Colors.tertiary,
     borderRadius: Radius.lg,
     padding: Spacing.breathe,
     alignItems: 'center',
@@ -727,14 +1016,15 @@ const styles = StyleSheet.create({
     flex: 1,
     height: TapTargets.minHeight,
     borderRadius: Radius.full,
-    backgroundColor: Colors.surface_container_highest,
+    backgroundColor: Colors.primary_fixed,
     alignItems: 'center',
     justifyContent: 'center',
+    ...Elevation.low,
   },
   frequencyPillActive: {
     backgroundColor: Colors.primary_container,
-    borderWidth: 2,
-    borderColor: `${Colors.primary}33`,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}22`,
   },
   frequencyText: {
     fontFamily: FontFamily.bold,
@@ -764,7 +1054,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.surface_container_low,
+    backgroundColor: Colors.primary_fixed,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -789,7 +1079,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.surface_container_low,
+    backgroundColor: Colors.primary_fixed,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -803,6 +1093,28 @@ const styles = StyleSheet.create({
   },
   monthDayTextActive: {
     color: Colors.on_primary,
+  },
+  onceDateCard: {
+    backgroundColor: Colors.tertiary,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.generous,
+    paddingVertical: Spacing.cozy,
+    minHeight: TapTargets.minHeight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...Elevation.low,
+  },
+  onceDateValue: {
+    fontFamily: FontFamily.bold,
+    fontSize: 18,
+    color: Colors.on_surface,
+    marginBottom: 4,
+  },
+  onceDateHint: {
+    fontFamily: FontFamily.medium,
+    fontSize: 14,
+    color: Colors.on_surface_variant,
   },
 
   // Sound
@@ -818,22 +1130,71 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.compact,
-    backgroundColor: Colors.secondary_container,
+    backgroundColor: Colors.primary_fixed,
     borderRadius: Radius.lg,
+    ...Elevation.low,
   },
   soundActionBtnSecondary: {
-    backgroundColor: Colors.surface_container_highest,
+    backgroundColor: Colors.tertiary,
   },
   soundActionText: {
     fontFamily: FontFamily.bold,
     fontSize: 14,
     color: Colors.on_surface,
   },
+  soundHeroCard: {
+    borderRadius: Radius.xl,
+    overflow: 'hidden',
+    marginBottom: Spacing.cozy,
+    ...Elevation.low,
+  },
+  soundHeroGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.item,
+    padding: Spacing.generous,
+  },
+  soundHeroCopy: {
+    flex: 1,
+  },
+  soundHeroTitle: {
+    fontFamily: FontFamily.bold,
+    fontSize: 19,
+    color: Colors.on_surface,
+    marginBottom: 6,
+  },
+  soundHeroSubtitle: {
+    fontFamily: FontFamily.medium,
+    fontSize: 14,
+    lineHeight: 21,
+    color: Colors.on_surface_variant,
+  },
+  soundHeroBadge: {
+    minWidth: 74,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surface_container_lowest,
+  },
+  soundHeroBadgeText: {
+    fontFamily: FontFamily.bold,
+    fontSize: 13,
+    color: Colors.primary,
+  },
   soundList: {
-    backgroundColor: Colors.surface_container_low,
+    backgroundColor: Colors.tertiary,
     borderRadius: Radius.lg,
     padding: Spacing.cozy,
     gap: Spacing.compact,
+  },
+  soundLoadingText: {
+    fontFamily: FontFamily.medium,
+    fontSize: 15,
+    color: Colors.on_surface_variant,
+    paddingVertical: Spacing.cozy,
   },
   soundItem: {
     flexDirection: 'row',
@@ -844,22 +1205,45 @@ const styles = StyleSheet.create({
     gap: Spacing.cozy,
   },
   soundItemActive: {
-    backgroundColor: Colors.surface_container_lowest,
+    backgroundColor: Colors.primary_fixed,
     borderWidth: 1,
     borderColor: `${Colors.primary}1A`,
+    ...Elevation.low,
   },
-  soundIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  soundIconBubble: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  soundName: {
+  soundEmoji: {
+    fontSize: 22,
+  },
+  soundMeta: {
     flex: 1,
-    fontFamily: FontFamily.medium,
+  },
+  soundName: {
+    fontFamily: FontFamily.bold,
     fontSize: 16,
     color: Colors.on_surface,
+  },
+  soundCaption: {
+    fontFamily: FontFamily.medium,
+    fontSize: 13,
+    color: Colors.on_surface_variant,
+    marginTop: 3,
+  },
+  previewButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary_container,
+  },
+  previewButtonActive: {
+    backgroundColor: Colors.primary,
   },
 
   // CTA
@@ -885,14 +1269,5 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: Colors.on_primary,
     letterSpacing: 0.3,
-  },
-  quoteText: {
-    fontFamily: FontFamily.medium,
-    fontSize: 14,
-    color: Colors.on_surface_variant,
-    textAlign: 'center',
-    marginTop: Spacing.generous,
-    fontStyle: 'italic',
-    opacity: 0.6,
   },
 });

@@ -11,6 +11,7 @@
 
 import React, { useCallback, useState } from 'react';
 import {
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -24,10 +25,14 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import ReminderCard from '@/src/components/ReminderCard';
+import TaskCompletionSheet from '@/src/components/TaskCompletionSheet';
+import HydrationTimerButton from '@/src/components/HydrationTimerButton';
+import HomeReminderCard from '@/src/components/HomeReminderCard';
 import ProgressBar from '@/src/components/ProgressBar';
-import WaterDropButton from '@/src/components/WaterDropButton';
+import QuoteFooter from '@/src/components/QuoteFooter';
+import type { ReminderWithStatus } from '@/src/db/types';
 import { buildTimeLabel } from '@/src/db/types';
+import { usePoints } from '@/src/hooks/usePoints';
 import { useReminders } from '@/src/hooks/useReminders';
 import { Colors } from '@/src/theme/colors';
 import { Elevation } from '@/src/theme/elevation';
@@ -40,8 +45,12 @@ export default function HomeScreen() {
   const { userName, colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { reminders, loading, refresh, completeReminder } = useReminders();
+  const { reminders, loading, refresh, completeReminder, removeReminder } = useReminders();
+  const { points, refresh: refreshPoints } = usePoints();
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedReminder, setSelectedReminder] = useState<ReminderWithStatus | null>(null);
+  const [dialValue, setDialValue] = useState(10);
+  const [savingCompletion, setSavingCompletion] = useState(false);
   const styles = createStyles(colors);
 
   const completedCount = reminders.filter((r) => r.todayCompletion !== null).length;
@@ -56,6 +65,67 @@ export default function HomeScreen() {
     await refresh();
     setRefreshing(false);
   }, [refresh]);
+
+  const openCompletionSheet = (reminder: ReminderWithStatus) => {
+    if (reminder.todayCompletion) {
+      return;
+    }
+
+    setSelectedReminder(reminder);
+    setDialValue(10);
+  };
+
+  const closeCompletionSheet = () => {
+    if (savingCompletion) {
+      return;
+    }
+
+    setSelectedReminder(null);
+    setDialValue(10);
+  };
+
+  const saveCompletion = async () => {
+    if (!selectedReminder) {
+      return;
+    }
+
+    try {
+      setSavingCompletion(true);
+      await completeReminder(selectedReminder.id, dialValue);
+      await Promise.all([refresh(), refreshPoints()]);
+      setSelectedReminder(null);
+      setDialValue(10);
+    } catch (error) {
+      console.error('Failed to save completion:', error);
+    } finally {
+      setSavingCompletion(false);
+    }
+  };
+
+  const promptRemoveReminder = (reminder: ReminderWithStatus) => {
+    Alert.alert(
+      'Remove task?',
+      `Remove "${reminder.name}" from your reminders?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removeReminder(reminder.id);
+              if (selectedReminder?.id === reminder.id) {
+                setSelectedReminder(null);
+                setDialValue(10);
+              }
+            } catch (error) {
+              console.error('Failed to delete reminder:', error);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleToggleComplete = async (id: number, isCurrentlyCompleted: boolean) => {
     if (!isCurrentlyCompleted) {
@@ -95,24 +165,12 @@ export default function HomeScreen() {
           style={styles.headerBar}
         >
           <View style={styles.headerGlow} />
-          <TouchableOpacity
-            style={styles.menuButton}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Menu"
-          >
-            <MaterialCommunityIcons
-              name="menu"
-              size={28}
-              color={colors.primary_fixed_variant}
-            />
-          </TouchableOpacity>
 
           <View style={styles.greetingWrap}>
             <Text style={styles.greetingText}>{greeting}</Text>
           </View>
 
-          <WaterDropButton />
+          <HydrationTimerButton />
         </Animated.View>
 
         {/* ── Focus Card ─────────────────────────────── */}
@@ -166,15 +224,17 @@ export default function HomeScreen() {
                   key={reminder.id}
                   entering={FadeInDown.duration(400).delay(300 + index * 80)}
                 >
-                  <ReminderCard
+                  <HomeReminderCard
                     id={reminder.id}
                     name={reminder.name}
                     type={reminder.type}
                     icon={reminder.icon}
+                    description={reminder.description}
                     timeLabel={timeLabel}
                     isCompleted={isCompleted}
                     dialValue={reminder.todayCompletion?.dial_value}
-                    onToggleComplete={() => handleToggleComplete(reminder.id, isCompleted)}
+                    onToggleComplete={() => openCompletionSheet(reminder)}
+                    onLongPress={() => promptRemoveReminder(reminder)}
                     index={index}
                   />
                 </Animated.View>
@@ -188,12 +248,21 @@ export default function HomeScreen() {
           entering={FadeInDown.duration(500).delay(700)}
           style={styles.illustrationPlaceholder}
         >
-          <Text style={styles.illustrationEmoji}>🌸</Text>
-          <Text style={styles.illustrationText}>
-            You're doing beautifully today
-          </Text>
+          <QuoteFooter scope="home-tab-footer" />
         </Animated.View>
       </ScrollView>
+
+      <TaskCompletionSheet
+        visible={selectedReminder !== null}
+        reminderName={selectedReminder?.name ?? "Today's reminder"}
+        totalPoints={points.total_points}
+        dialValue={dialValue}
+        saving={savingCompletion}
+        onChangeDial={setDialValue}
+        onClose={closeCompletionSheet}
+        onPrimaryAction={saveCompletion}
+        onSecondaryAction={closeCompletionSheet}
+      />
     </View>
   );
 }
@@ -239,14 +308,6 @@ const createStyles = (colors: typeof Colors) =>
       borderRadius: 75,
       backgroundColor: colors.primary_container,
       opacity: 0.2,
-    },
-    menuButton: {
-      width: 44,
-      height: 44,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: Spacing.compact,
-      zIndex: 1,
     },
     greetingWrap: {
       flex: 1,
@@ -352,18 +413,7 @@ const createStyles = (colors: typeof Colors) =>
 
     // Illustration
     illustrationPlaceholder: {
-      alignItems: 'center',
       paddingVertical: Spacing.breathe,
       marginTop: Spacing.cozy,
-    },
-    illustrationEmoji: {
-      fontSize: 40,
-      marginBottom: Spacing.compact,
-    },
-    illustrationText: {
-      fontFamily: FontFamily.medium,
-      fontSize: 16,
-      color: colors.on_surface_variant,
-      textAlign: 'center',
     },
   });

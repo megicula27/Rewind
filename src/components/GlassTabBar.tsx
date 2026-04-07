@@ -32,7 +32,7 @@ interface TabConfig {
 const TABS: TabConfig[] = [
   { name: 'index', label: 'Home', icon: 'home-outline', iconFocused: 'home' },
   { name: 'add', label: 'Add', icon: 'plus-circle-outline', iconFocused: 'plus-circle' },
-  { name: 'points', label: 'Points', icon: 'star-outline', iconFocused: 'star' },
+  { name: 'points-screen', label: 'Points', icon: 'star-outline', iconFocused: 'star' },
   { name: 'profile', label: 'Profile', icon: 'account-outline', iconFocused: 'account' },
 ];
 
@@ -109,6 +109,9 @@ function TabButton({
 export default function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, Spacing.compact);
+  const visibleRoutes = state.routes.filter((route: any) =>
+    TABS.some((tab) => tab.name === route.name)
+  );
 
   return (
     <View style={[styles.container, { paddingBottom: bottomPadding }]}>
@@ -118,9 +121,10 @@ export default function GlassTabBar({ state, descriptors, navigation }: GlassTab
         style={[StyleSheet.absoluteFill, styles.blur]}
       />
       <View style={styles.tabRow}>
-        {state.routes.map((route: any, index: number) => {
+        {visibleRoutes.map((route: any) => {
           const tab = TABS.find((t) => t.name === route.name) || TABS[0];
-          const isActive = state.index === index;
+          const routeIndex = state.routes.findIndex((item: any) => item.key === route.key);
+          const isActive = state.index === routeIndex;
 
           const onPress = () => {
             const event = navigation.emit({

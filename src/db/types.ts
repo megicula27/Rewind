@@ -7,7 +7,7 @@
 
 // ── Reminder ───────────────────────────────────────
 export type ReminderType = 'medicine' | 'food' | 'water' | 'custom';
-export type ReminderFrequency = 'daily' | 'weekly' | 'monthly';
+export type ReminderFrequency = 'daily' | 'weekly' | 'monthly' | 'once';
 
 export interface Reminder {
   id: number;
@@ -20,6 +20,7 @@ export interface Reminder {
   time_minute: number;
   day_of_week: number | null;   // 0=Sun, 1=Mon ... 6=Sat (for weekly)
   day_of_month: number | null;  // 1–31 (for monthly)
+  once_date: string | null;
   sound_id: number | null;
   is_active: number;            // 0 | 1 (SQLite boolean)
   created_at: string;
@@ -36,6 +37,7 @@ export interface CreateReminderInput {
   time_minute: number;
   day_of_week?: number;
   day_of_month?: number;
+  once_date?: string;
   sound_id?: number;
 }
 
@@ -89,6 +91,20 @@ export function formatReminderTime(hour: number, minute: number): string {
   return `${h}:${m} ${period}`;
 }
 
+export function formatDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function formatDateTimeKey(date: Date): string {
+  const hours = `${date.getHours()}`.padStart(2, '0');
+  const minutes = `${date.getMinutes()}`.padStart(2, '0');
+  const seconds = `${date.getSeconds()}`.padStart(2, '0');
+  return `${formatDateKey(date)} ${hours}:${minutes}:${seconds}`;
+}
+
 // ── Helper: get day label for weekly ───────────────
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_NAMES_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -97,12 +113,26 @@ export function getDayName(dayOfWeek: number, short = false): string {
   return short ? DAY_NAMES_SHORT[dayOfWeek] : DAY_NAMES[dayOfWeek];
 }
 
+export function formatReminderDate(dateString: string): string {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const date = new Date(year, (month ?? 1) - 1, day ?? 1);
+
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 // ── Helper: build time label for home screen ───────
 export function buildTimeLabel(reminder: Reminder, completion: CompletionLog | null): string {
   const time = formatReminderTime(reminder.time_hour, reminder.time_minute);
   
   if (completion) {
     return `Completed at ${time}`;
+  }
+
+  if (reminder.frequency === 'once' && reminder.once_date) {
+    return `Scheduled for ${time} · ${formatReminderDate(reminder.once_date)}`;
   }
   
   let freq = '';
