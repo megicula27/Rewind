@@ -10,6 +10,7 @@ import { Platform } from 'react-native';
 import Storage from 'expo-sqlite/kv-store';
 import { Colors, ThemeColors } from './colors';
 import {
+  cancelReminderNotificationsAsync,
   cancelHydrationNotificationsAsync,
   scheduleHydrationNotificationAsync,
 } from '../notifications/service';
@@ -36,6 +37,8 @@ interface ThemeContextValue {
   themeName: string;
   userName: string | null;
   setUserName: (name: string) => void;
+  notificationsEnabled: boolean;
+  setNotificationsEnabled: (enabled: boolean) => void;
   isFirstLaunch: boolean;
   setIsFirstLaunch: (val: boolean) => void;
   hydrationTimerSeconds: number | null;
@@ -50,6 +53,8 @@ const ThemeContext = createContext<ThemeContextValue>({
   themeName: 'cherry_blossom',
   userName: null,
   setUserName: () => {},
+  notificationsEnabled: true,
+  setNotificationsEnabled: () => {},
   isFirstLaunch: true,
   setIsFirstLaunch: () => {},
   hydrationTimerSeconds: null,
@@ -61,9 +66,11 @@ const ThemeContext = createContext<ThemeContextValue>({
 
 const STORAGE_KEY_NAME = 'rewind_user_name';
 const STORAGE_KEY_LAUNCHED = 'rewind_has_launched';
+const STORAGE_KEY_NOTIFICATIONS = 'rewind_notifications_enabled';
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [userName, setUserNameState] = useState<string | null>(null);
+  const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
   const [isFirstLaunch, setIsFirstLaunchState] = useState(true);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hydrationTimerSeconds, setHydrationTimerSeconds] = useState<number | null>(null);
@@ -74,12 +81,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     // Load persisted values
     const storedName = readPersistedValue(STORAGE_KEY_NAME);
     const hasLaunched = readPersistedValue(STORAGE_KEY_LAUNCHED);
+    const storedNotificationsEnabled = readPersistedValue(STORAGE_KEY_NOTIFICATIONS);
     
     if (storedName) {
       setUserNameState(storedName);
     }
     if (hasLaunched === 'true') {
       setIsFirstLaunchState(false);
+    }
+    if (storedNotificationsEnabled === 'false') {
+      setNotificationsEnabledState(false);
     }
     setIsLoaded(true);
   }, []);
@@ -116,15 +127,29 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const setNotificationsEnabled = useCallback((enabled: boolean) => {
+    setNotificationsEnabledState(enabled);
+    writePersistedValue(STORAGE_KEY_NOTIFICATIONS, enabled ? 'true' : 'false');
+
+    if (!enabled) {
+      void Promise.all([
+        cancelReminderNotificationsAsync(),
+        cancelHydrationNotificationsAsync(),
+      ]);
+    }
+  }, []);
+
   const startHydrationTimer = useCallback((seconds: number) => {
     setHydrationTimerSeconds(seconds);
     setHydrationTimeRemaining(seconds);
     setIsHydrationTimerRunning(true);
-    void scheduleHydrationNotificationAsync(seconds, {
-      userName,
-      themeName: 'cherry_blossom',
-    }, true);
-  }, [userName]);
+    if (notificationsEnabled) {
+      void scheduleHydrationNotificationAsync(seconds, {
+        userName,
+        themeName: 'cherry_blossom',
+      }, true);
+    }
+  }, [notificationsEnabled, userName]);
 
   const stopHydrationTimer = useCallback(() => {
     setIsHydrationTimerRunning(false);
@@ -142,6 +167,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         themeName: 'cherry_blossom',
         userName,
         setUserName,
+        notificationsEnabled,
+        setNotificationsEnabled,
         isFirstLaunch,
         setIsFirstLaunch,
         hydrationTimerSeconds,

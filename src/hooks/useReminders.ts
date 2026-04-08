@@ -17,7 +17,7 @@ import { useTheme } from '../theme/ThemeContext';
 
 export function useReminders() {
   const db = useSQLiteContext();
-  const { userName, themeName } = useTheme();
+  const { userName, themeName, notificationsEnabled } = useTheme();
   const [reminders, setReminders] = useState<ReminderWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,10 +44,12 @@ export function useReminders() {
         try {
           const activeReminders = await getReminders(db);
           const sounds = await getSounds(db);
-          await syncReminderNotificationsAsync(activeReminders, sounds, {
-            userName,
-            themeName,
-          });
+          if (notificationsEnabled) {
+            await syncReminderNotificationsAsync(activeReminders, sounds, {
+              userName,
+              themeName,
+            });
+          }
         } catch (error) {
           console.error('Failed to sync notifications after creating reminder:', error);
         }
@@ -56,7 +58,7 @@ export function useReminders() {
       console.error('Failed to create reminder:', err);
       throw err;
     }
-  }, [db, refresh, themeName, userName]);
+  }, [db, notificationsEnabled, refresh, themeName, userName]);
 
   const completeReminder = useCallback(async (reminderId: number, dialValue: number) => {
     try {
@@ -76,10 +78,12 @@ export function useReminders() {
         try {
           const activeReminders = await getReminders(db);
           const sounds = await getSounds(db);
-          await syncReminderNotificationsAsync(activeReminders, sounds, {
-            userName,
-            themeName,
-          });
+          if (notificationsEnabled) {
+            await syncReminderNotificationsAsync(activeReminders, sounds, {
+              userName,
+              themeName,
+            });
+          }
         } catch (error) {
           console.error('Failed to sync notifications after removing reminder:', error);
         }
@@ -88,7 +92,7 @@ export function useReminders() {
       console.error('Failed to delete reminder:', err);
       throw err;
     }
-  }, [db, refresh, themeName, userName]);
+  }, [db, notificationsEnabled, refresh, themeName, userName]);
 
   return {
     reminders,

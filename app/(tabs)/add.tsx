@@ -355,7 +355,11 @@ export default function AddScreen() {
         >
           <View style={styles.headerRow}>
             <View style={styles.headerEmojiBadge}>
-              <Text style={styles.headerEmoji}>🌸</Text>
+              <MaterialCommunityIcons
+                name="flower-tulip-outline"
+                size={17}
+                color={Colors.primary_fixed_variant}
+              />
             </View>
             <Text style={styles.headerTitle}>New Reminder</Text>
           </View>
@@ -795,7 +799,7 @@ export default function AddScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
-          <QuoteFooter scope="add-tab-footer" />
+          <QuoteFooter scope="add-tab-footer" shift={2} />
         </Animated.View>
       </ScrollView>
 
@@ -869,9 +873,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: Colors.primary_container,
     ...Elevation.low,
-  },
-  headerEmoji: {
-    fontSize: 17,
   },
   headerTitle: {
     fontFamily: FontFamily.bold,

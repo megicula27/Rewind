@@ -135,8 +135,10 @@ export default function HomeScreen() {
     // TODO: Phase 3 — show completion dial for partial completion
   };
 
+  const headerPaddingTop = insets.top + Spacing.compact;
+
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={styles.screen}>
       <LinearGradient
         colors={[colors.surface, colors.tertiary, colors.surface_container_low]}
         locations={[0, 0.3, 1]}
@@ -162,7 +164,7 @@ export default function HomeScreen() {
         {/* ── Header Bar ─────────────────────────────── */}
         <Animated.View 
           entering={FadeInDown.duration(500).delay(100)}
-          style={styles.headerBar}
+          style={[styles.headerBar, { paddingTop: headerPaddingTop }]}
         >
           <View style={styles.headerGlow} />
 
@@ -248,7 +250,7 @@ export default function HomeScreen() {
           entering={FadeInDown.duration(500).delay(700)}
           style={styles.illustrationPlaceholder}
         >
-          <QuoteFooter scope="home-tab-footer" />
+          <QuoteFooter scope="home-tab-footer" shift={1} />
         </Animated.View>
       </ScrollView>
 
@@ -287,17 +289,14 @@ const createStyles = (colors: typeof Colors) =>
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.primary_fixed,
-      borderTopLeftRadius: Radius.lg,
-      borderTopRightRadius: Radius.lg,
       borderBottomLeftRadius: Radius.xxl + 12,
       borderBottomRightRadius: Radius.xxl + 12,
-      paddingTop: Spacing.generous,
-      paddingBottom: Spacing.cozy,
-      paddingHorizontal: Spacing.generous + 4,
+      paddingBottom: Spacing.compact,
+      paddingHorizontal: Spacing.generous + 12,
       marginTop: 0,
       marginHorizontal: -Spacing.generous,
-      marginBottom: Spacing.breathe,
-      minHeight: 118,
+      marginBottom: Spacing.breathe + Spacing.compact,
+      minHeight: 104,
     },
     headerGlow: {
       position: 'absolute',
@@ -328,7 +327,9 @@ const createStyles = (colors: typeof Colors) =>
     focusCard: {
       backgroundColor: colors.surface_container_lowest,
       borderRadius: Radius.xl,
-      padding: Spacing.generous,
+      paddingVertical: Spacing.generous,
+      paddingHorizontal: Spacing.breathe,
+      marginHorizontal: 8,
       marginBottom: Spacing.breathe,
       overflow: 'hidden',
       position: 'relative',

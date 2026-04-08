@@ -7,8 +7,8 @@ import {
   pickMotivationQuote,
 } from '../quotes/service';
 
-export function useMotivationQuote(scope: string) {
-  const [quote, setQuote] = useState<MotivationQuote>(() => getFallbackQuote(scope));
+export function useMotivationQuote(scope: string, shift = 0) {
+  const [quote, setQuote] = useState<MotivationQuote>(() => getFallbackQuote(scope, shift));
 
   useEffect(() => {
     let isCancelled = false;
@@ -19,7 +19,7 @@ export function useMotivationQuote(scope: string) {
         return;
       }
 
-      setQuote(pickMotivationQuote(quotes, scope));
+      setQuote(pickMotivationQuote(quotes, scope, shift));
     };
 
     void loadQuote();
@@ -27,7 +27,7 @@ export function useMotivationQuote(scope: string) {
     return () => {
       isCancelled = true;
     };
-  }, [scope]);
+  }, [scope, shift]);
 
   return quote;
 }

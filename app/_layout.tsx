@@ -14,6 +14,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet, Platform } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
+import * as SystemUI from 'expo-system-ui';
 import { SQLiteProvider } from 'expo-sqlite';
 import {
   useFonts,
@@ -40,11 +41,17 @@ export const unstable_settings = {
 };
 
 function AppContent() {
-  const { isFirstLaunch, setUserName } = useTheme();
+  const { colors, isFirstLaunch, setUserName } = useTheme();
 
   const handleNameSubmit = (name: string) => {
     setUserName(name);
   };
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      void SystemUI.setBackgroundColorAsync(colors.primary_fixed);
+    }
+  }, [colors.primary_fixed]);
 
   return (
     <View style={styles.container}>
@@ -70,7 +77,7 @@ function AppContent() {
       {/* First-launch name prompt overlay */}
       {isFirstLaunch && <NamePrompt onSubmit={handleNameSubmit} />}
       
-      <StatusBar style="dark" />
+      <StatusBar style="dark" backgroundColor={colors.primary_fixed} />
     </View>
   );
 }

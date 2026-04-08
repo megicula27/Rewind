@@ -7,20 +7,16 @@
  */
 
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors } from '../theme/colors';
+import { type ThemeColors } from '../theme/colors';
 import { Spacing, Radius } from '../theme/spacing';
-import { Typography, FontFamily } from '../theme/typography';
-import Animated, { 
-  useAnimatedStyle, 
-  withTiming, 
-  withSpring,
-  interpolateColor 
-} from 'react-native-reanimated';
-import { Text } from 'react-native';
+import { FontFamily } from '../theme/typography';
+import Animated, { useAnimatedStyle, withTiming, withSpring } from 'react-native-reanimated';
+import { useTheme } from '../theme/ThemeContext';
 
 interface TabConfig {
   name: string;
@@ -46,12 +42,14 @@ function TabButton({
   tab, 
   isActive, 
   onPress, 
-  onLongPress 
+  onLongPress,
+  colors,
 }: { 
   tab: TabConfig; 
   isActive: boolean; 
   onPress: () => void;
   onLongPress: () => void;
+  colors: ThemeColors;
 }) {
   const animatedStyle = useAnimatedStyle(() => {
     return {
@@ -82,18 +80,24 @@ function TabButton({
     >
       <Animated.View style={[styles.tabContent, animatedStyle]}>
         {/* Active pill indicator */}
-        <Animated.View style={[styles.activePill, pillStyle]} />
+        <Animated.View
+          style={[
+            styles.activePill,
+            { backgroundColor: `${colors.primary_container}CC` },
+            pillStyle,
+          ]}
+        />
         
         <MaterialCommunityIcons
           name={isActive ? tab.iconFocused as any : tab.icon as any}
           size={24}
-          color={isActive ? Colors.primary : Colors.neutral}
+          color={isActive ? colors.primary : colors.neutral}
         />
         <Text
           style={[
             styles.tabLabel,
             { 
-              color: isActive ? Colors.primary : Colors.neutral,
+              color: isActive ? colors.primary : colors.neutral,
               fontFamily: isActive ? FontFamily.semiBold : FontFamily.medium,
             },
           ]}
@@ -106,70 +110,109 @@ function TabButton({
   );
 }
 
-export default function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
+export default function GlassTabBar({ state, navigation }: GlassTabBarProps) {
   const insets = useSafeAreaInsets();
-  const bottomPadding = Math.max(insets.bottom, Spacing.compact);
+  const { colors } = useTheme();
+  const bottomPadding = Math.max(insets.bottom, Spacing.compact + 2);
+  const totalBarHeight = 72 + bottomPadding;
   const visibleRoutes = state.routes.filter((route: any) =>
     TABS.some((tab) => tab.name === route.name)
   );
 
   return (
-    <View style={[styles.container, { paddingBottom: bottomPadding }]}>
-      <BlurView
-        intensity={80}
-        tint="light"
-        style={[StyleSheet.absoluteFill, styles.blur]}
+    <View style={styles.wrapper}>
+      <LinearGradient
+        colors={[
+          `${colors.surface}00`,
+          `${colors.surface_container_low}14`,
+          `${colors.primary_fixed}72`,
+          `${colors.primary_fixed}F2`,
+        ]}
+        locations={[0, 0.22, 0.68, 1]}
+        pointerEvents="none"
+        style={[styles.bottomBlend, { height: totalBarHeight + 76 }]}
       />
-      <View style={styles.tabRow}>
-        {visibleRoutes.map((route: any) => {
-          const tab = TABS.find((t) => t.name === route.name) || TABS[0];
-          const routeIndex = state.routes.findIndex((item: any) => item.key === route.key);
-          const isActive = state.index === routeIndex;
+      <View style={styles.shell}>
+        <View
+          style={[
+            styles.container,
+            {
+              paddingBottom: bottomPadding,
+              backgroundColor: `${colors.primary_fixed}D8`,
+            },
+          ]}
+        >
+          <BlurView
+            intensity={64}
+            tint="light"
+            style={[StyleSheet.absoluteFill, styles.blur]}
+          />
+          <View style={styles.tabRow}>
+            {visibleRoutes.map((route: any) => {
+              const tab = TABS.find((t) => t.name === route.name) || TABS[0];
+              const routeIndex = state.routes.findIndex((item: any) => item.key === route.key);
+              const isActive = state.index === routeIndex;
 
-          const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
+              const onPress = () => {
+                const event = navigation.emit({
+                  type: 'tabPress',
+                  target: route.key,
+                  canPreventDefault: true,
+                });
 
-            if (!isActive && !event.defaultPrevented) {
-              navigation.navigate(route.name);
-            }
-          };
+                if (!isActive && !event.defaultPrevented) {
+                  navigation.navigate(route.name);
+                }
+              };
 
-          const onLongPress = () => {
-            navigation.emit({
-              type: 'tabLongPress',
-              target: route.key,
-            });
-          };
+              const onLongPress = () => {
+                navigation.emit({
+                  type: 'tabLongPress',
+                  target: route.key,
+                });
+              };
 
-          return (
-            <TabButton
-              key={route.key}
-              tab={tab}
-              isActive={isActive}
-              onPress={onPress}
-              onLongPress={onLongPress}
-            />
-          );
-        })}
+              return (
+                <TabButton
+                  key={route.key}
+                  tab={tab}
+                  isActive={isActive}
+                  onPress={onPress}
+                  onLongPress={onLongPress}
+                  colors={colors}
+                />
+              );
+            })}
+          </View>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  wrapper: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: `${Colors.surface}CC`, // 80% opacity
+    overflow: 'visible',
+  },
+  shell: {
+    overflow: 'hidden',
+    zIndex: 1,
+  },
+  container: {
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
     overflow: 'hidden',
+  },
+  bottomBlend: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 0,
   },
   blur: {
     borderTopLeftRadius: Radius.xl,
@@ -177,8 +220,9 @@ const styles = StyleSheet.create({
   },
   tabRow: {
     flexDirection: 'row',
-    paddingTop: Spacing.compact,
+    paddingTop: Spacing.compact + 2,
     paddingHorizontal: Spacing.cozy,
+    zIndex: 1,
   },
   tabButton: {
     flex: 1,
@@ -199,9 +243,8 @@ const styles = StyleSheet.create({
     left: -4,
     right: -4,
     bottom: 0,
-    backgroundColor: Colors.primary_container,
     borderRadius: Radius.full,
-    opacity: 0.5,
+    opacity: 0.72,
   },
   tabLabel: {
     fontSize: 11,

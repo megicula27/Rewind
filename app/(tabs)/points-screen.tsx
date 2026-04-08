@@ -66,7 +66,7 @@ export default function PointsScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { points, weekSummary } = usePoints();
-  const headerQuote = useMotivationQuote('points-tab-header');
+  const headerQuote = useMotivationQuote('points-tab-header', 3);
   const styles = createStyles(colors);
 
   const maxJarPoints = 2000;
@@ -76,8 +76,10 @@ export default function PointsScreen() {
   const pointsToNextUnlock = Math.max(nextUnlock.cost - points.total_points, 0);
   const completedDays = weekSummary.filter((day) => day.completed).length;
 
+  const headerPaddingTop = insets.top + Spacing.compact;
+
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={styles.screen}>
       <LinearGradient
         colors={[colors.surface, colors.tertiary, colors.surface_container_low]}
         locations={[0, 0.72, 1]}
@@ -91,10 +93,12 @@ export default function PointsScreen() {
       >
         <View style={styles.header}>
           <View style={styles.headerGlow} />
+          <View style={[styles.headerContentWrap, { paddingTop: headerPaddingTop }]}>
           <View style={styles.headerContent}>
             <Text style={styles.headerLabel}>Today&apos;s Motivation</Text>
             <Text style={styles.headerQuote}>"{headerQuote.text}"</Text>
             <Text style={styles.headerAuthor}>- {headerQuote.author}</Text>
+          </View>
           </View>
 
           <HydrationTimerButton />
@@ -268,7 +272,7 @@ export default function PointsScreen() {
           </View>
         </View>
 
-        <QuoteFooter scope="points-tab-footer" />
+        <QuoteFooter scope="points-tab-footer" shift={4} />
       </ScrollView>
     </View>
   );
@@ -291,9 +295,8 @@ const createStyles = (colors: typeof Colors) =>
       marginHorizontal: -Spacing.generous,
       marginBottom: Spacing.item,
       paddingHorizontal: Spacing.generous + 4,
-      paddingTop: Spacing.generous,
-      paddingBottom: Spacing.cozy,
-      minHeight: 118,
+      paddingBottom: Spacing.compact,
+      minHeight: 108,
       overflow: 'hidden',
       position: 'relative',
       flexDirection: 'row',
@@ -301,6 +304,10 @@ const createStyles = (colors: typeof Colors) =>
       backgroundColor: colors.primary_fixed,
       borderBottomLeftRadius: Radius.xxl + 12,
       borderBottomRightRadius: Radius.xxl + 12,
+    },
+    headerContentWrap: {
+      flex: 1,
+      justifyContent: 'center',
     },
     headerGlow: {
       position: 'absolute',
@@ -313,7 +320,6 @@ const createStyles = (colors: typeof Colors) =>
       opacity: 0.18,
     },
     headerContent: {
-      flex: 1,
       paddingRight: Spacing.item,
       zIndex: 1,
     },
@@ -582,6 +588,7 @@ const createStyles = (colors: typeof Colors) =>
       borderRadius: Radius.full,
       alignItems: 'center',
       justifyContent: 'center',
+      paddingHorizontal: Spacing.compact,
     },
     rewardButtonActive: {
       backgroundColor: colors.primary,
@@ -593,8 +600,10 @@ const createStyles = (colors: typeof Colors) =>
     },
     rewardButtonText: {
       fontFamily: FontFamily.bold,
-      fontSize: 15,
+      fontSize: 13,
+      lineHeight: 16,
       color: colors.on_primary,
+      textAlign: 'center',
     },
     rewardButtonTextDisabled: {
       color: colors.primary_fixed_variant,

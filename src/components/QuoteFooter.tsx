@@ -8,10 +8,11 @@ import { FontFamily } from '../theme/typography';
 
 type QuoteFooterProps = {
   scope: string;
+  shift?: number;
 };
 
-export default function QuoteFooter({ scope }: QuoteFooterProps) {
-  const quote = useMotivationQuote(scope);
+export default function QuoteFooter({ scope, shift = 0 }: QuoteFooterProps) {
+  const quote = useMotivationQuote(scope, shift);
 
   return (
     <View style={styles.wrap}>

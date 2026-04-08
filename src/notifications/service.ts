@@ -464,6 +464,10 @@ export async function syncReminderNotificationsAsync(
   }
 }
 
+export async function cancelReminderNotificationsAsync() {
+  await cancelNotificationsWithPrefix(REMINDER_PREFIX);
+}
+
 export async function scheduleHydrationNotificationAsync(
   seconds: number,
   context: NotificationContext,

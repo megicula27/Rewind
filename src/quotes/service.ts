@@ -81,11 +81,11 @@ export async function getMotivationQuotes() {
   return inFlightRequest;
 }
 
-export function getFallbackQuote(scope: string) {
-  return pickMotivationQuote(FALLBACK_QUOTES, scope);
+export function getFallbackQuote(scope: string, shift = 0) {
+  return pickMotivationQuote(FALLBACK_QUOTES, scope, shift);
 }
 
-export function pickMotivationQuote(quotes: MotivationQuote[], scope: string) {
+export function pickMotivationQuote(quotes: MotivationQuote[], scope: string, shift = 0) {
   if (quotes.length === 0) {
     return FALLBACK_QUOTES[0];
   }
@@ -95,5 +95,6 @@ export function pickMotivationQuote(quotes: MotivationQuote[], scope: string) {
     hash = (hash * 33 + scope.charCodeAt(index)) | 0;
   }
 
-  return quotes[Math.abs(hash) % quotes.length] ?? quotes[0];
+  const index = Math.abs(hash + shift * 997) % quotes.length;
+  return quotes[index] ?? quotes[0];
 }

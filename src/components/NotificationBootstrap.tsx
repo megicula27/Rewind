@@ -9,7 +9,7 @@ import { useTheme } from '../theme/ThemeContext';
 
 export default function NotificationBootstrap() {
   const db = useSQLiteContext();
-  const { userName, themeName } = useTheme();
+  const { userName, themeName, notificationsEnabled } = useTheme();
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -20,6 +20,10 @@ export default function NotificationBootstrap() {
 
     const bootstrapNotifications = async () => {
       try {
+        if (!notificationsEnabled) {
+          return;
+        }
+
         const reminders = await getReminders(db);
         const sounds = await getSounds(db);
         if (isCancelled) {
@@ -40,7 +44,7 @@ export default function NotificationBootstrap() {
     return () => {
       isCancelled = true;
     };
-  }, [db, themeName, userName]);
+  }, [db, notificationsEnabled, themeName, userName]);
 
   return null;
 }
