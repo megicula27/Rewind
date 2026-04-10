@@ -112,7 +112,8 @@ function TabButton({
 
 export default function GlassTabBar({ state, navigation }: GlassTabBarProps) {
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
+  const { colors, themeName } = useTheme();
+  const isGoldenTheme = themeName === 'golden_sun';
   const bottomPadding = Math.max(insets.bottom, Spacing.compact + 2);
   const totalBarHeight = 72 + bottomPadding;
   const visibleRoutes = state.routes.filter((route: any) =>
@@ -124,9 +125,9 @@ export default function GlassTabBar({ state, navigation }: GlassTabBarProps) {
       <LinearGradient
         colors={[
           `${colors.surface}00`,
-          `${colors.surface_container_low}14`,
-          `${colors.primary_fixed}72`,
-          `${colors.primary_fixed}F2`,
+          isGoldenTheme ? `${colors.tertiary}10` : `${colors.surface_container_low}14`,
+          isGoldenTheme ? '#FFE8A872' : `${colors.primary_fixed}72`,
+          isGoldenTheme ? `${colors.surface}F2` : `${colors.primary_fixed}F2`,
         ]}
         locations={[0, 0.22, 0.68, 1]}
         pointerEvents="none"
@@ -138,7 +139,7 @@ export default function GlassTabBar({ state, navigation }: GlassTabBarProps) {
             styles.container,
             {
               paddingBottom: bottomPadding,
-              backgroundColor: `${colors.primary_fixed}D8`,
+              backgroundColor: isGoldenTheme ? `${colors.surface}E8` : `${colors.primary_fixed}D8`,
             },
           ]}
         >

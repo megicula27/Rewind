@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,47 +15,50 @@ import HydrationTimerButton from '@/src/components/HydrationTimerButton';
 import QuoteFooter from '@/src/components/QuoteFooter';
 import { usePoints } from '@/src/hooks/usePoints';
 import { useMotivationQuote } from '@/src/hooks/useMotivationQuote';
-import { Colors } from '@/src/theme/colors';
+import { Colors, type ThemeName } from '@/src/theme/colors';
 import { Elevation } from '@/src/theme/elevation';
 import { Radius, Spacing } from '@/src/theme/spacing';
 import { useTheme } from '@/src/theme/ThemeContext';
 import { FontFamily } from '@/src/theme/typography';
+import { getThemeVisuals } from '@/src/theme/visuals';
 
 interface RewardItem {
   id: string;
+  themeId: ThemeName;
   title: string;
   cost: number;
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
   accent: string;
   accentSoft: string;
-  large?: boolean;
 }
 
 const REWARDS: RewardItem[] = [
   {
-    id: 'sky-ocean',
-    title: 'Sky & Ocean',
+    id: 'aquatic-serenity',
+    themeId: 'aquatic_serenity',
+    title: 'Aquatic Serenity',
     cost: 1500,
-    icon: 'weather-partly-cloudy',
-    accent: '#6C9FCF',
-    accentSoft: '#DDECF8',
-    large: true,
+    icon: 'waves',
+    accent: '#475D82',
+    accentSoft: '#DCEAF9',
   },
   {
     id: 'jungle-deep',
+    themeId: 'jungle_deep',
     title: 'Jungle Deep',
     cost: 2000,
     icon: 'pine-tree',
-    accent: '#7C9070',
-    accentSoft: '#E3ECD8',
+    accent: '#556B2F',
+    accentSoft: '#E7EED0',
   },
   {
     id: 'golden-sun',
-    title: 'Golden Sun',
+    themeId: 'golden_sun',
+    title: 'Golden Sunburst',
     cost: 2500,
     icon: 'white-balance-sunny',
-    accent: '#D7A347',
-    accentSoft: '#FBE8BC',
+    accent: '#904800',
+    accentSoft: '#FFE3A5',
   },
 ];
 
@@ -64,26 +68,77 @@ function formatPoints(value: number) {
 
 export default function PointsScreen() {
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
-  const { points, weekSummary } = usePoints();
+  const { colors, themeName, userName, ownsTheme, unlockTheme } = useTheme();
+  const { points, weekSummary, spendPoints } = usePoints();
   const headerQuote = useMotivationQuote('points-tab-header', 3);
   const styles = createStyles(colors);
+  const visuals = getThemeVisuals(themeName);
+  const isGoldenTheme = themeName === 'golden_sun';
 
   const maxJarPoints = 2000;
   const jarFillRatio = Math.max(0.08, Math.min(points.total_points / maxJarPoints, 1));
+  const lockedRewards = REWARDS.filter((reward) => !ownsTheme(reward.themeId));
   const nextUnlock =
-    REWARDS.find((reward) => reward.cost > points.total_points) ?? REWARDS[REWARDS.length - 1];
-  const pointsToNextUnlock = Math.max(nextUnlock.cost - points.total_points, 0);
+    lockedRewards.find((reward) => reward.cost > points.total_points) ?? lockedRewards[0] ?? null;
+  const pointsToNextUnlock = nextUnlock ? Math.max(nextUnlock.cost - points.total_points, 0) : 0;
   const completedDays = weekSummary.filter((day) => day.completed).length;
 
   const headerPaddingTop = insets.top + Spacing.compact;
 
+  const handleRewardPress = (reward: RewardItem) => {
+    if (ownsTheme(reward.themeId)) {
+      Alert.alert('Already owned', `${reward.title} is already in your theme collection.`);
+      return;
+    }
+
+    if (points.total_points < reward.cost) {
+      const shortfall = reward.cost - points.total_points;
+      Alert.alert(
+        'More points needed',
+        `You need ${formatPoints(shortfall)} more points to unlock ${reward.title}.`
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Unlock theme?',
+      `Spend ${formatPoints(reward.cost)} points to unlock ${reward.title}?`,
+      [
+        { text: 'Not yet', style: 'cancel' },
+        {
+          text: 'Unlock',
+          onPress: async () => {
+            await spendPoints(reward.cost);
+            unlockTheme(reward.themeId);
+            Alert.alert('Theme unlocked', `${reward.title} has been added to your collection.`);
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.screen}>
       <LinearGradient
-        colors={[colors.surface, colors.tertiary, colors.surface_container_low]}
+        colors={
+          isGoldenTheme
+            ? [colors.surface, '#FFF3C8', colors.surface_container_low]
+            : [colors.surface, colors.tertiary, colors.surface_container_low]
+        }
         locations={[0, 0.72, 1]}
         style={StyleSheet.absoluteFill}
+      />
+      <MaterialCommunityIcons
+        name={visuals.points.backgroundTop}
+        size={112}
+        color={`${colors.primary}16`}
+        style={styles.backgroundIconTop}
+      />
+      <MaterialCommunityIcons
+        name={visuals.points.backgroundBottom}
+        size={118}
+        color={`${colors.secondary}14`}
+        style={styles.backgroundIconBottom}
       />
 
       <ScrollView
@@ -96,7 +151,7 @@ export default function PointsScreen() {
           <View style={[styles.headerContentWrap, { paddingTop: headerPaddingTop }]}>
           <View style={styles.headerContent}>
             <Text style={styles.headerLabel}>Today&apos;s Motivation</Text>
-            <Text style={styles.headerQuote}>"{headerQuote.text}"</Text>
+            <Text style={styles.headerQuote}>{'"'}{headerQuote.text}{'"'}</Text>
             <Text style={styles.headerAuthor}>- {headerQuote.author}</Text>
           </View>
           </View>
@@ -110,43 +165,57 @@ export default function PointsScreen() {
             {formatPoints(points.total_points)}
             <Text style={styles.collectionSuffix}> Points</Text>
           </Text>
+          {isGoldenTheme ? (
+            <View style={styles.collectionBadge}>
+              <MaterialCommunityIcons name="star-four-points" size={14} color={colors.secondary} />
+              <Text style={styles.collectionBadgeText}>Nearly full!</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.jarWrap}>
           <View style={styles.jar}>
             <View style={styles.jarLid} />
+            <View style={styles.jarHighlight} />
             <View style={[styles.jarFill, { height: `${jarFillRatio * 100}%` }]}>
               <LinearGradient
-                colors={[colors.primary_container, colors.primary_fixed]}
+                colors={
+                  isGoldenTheme
+                    ? ['#FFEFC7', '#FFE082']
+                    : [colors.primary_container, colors.primary_fixed]
+                }
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
               />
             </View>
+            <View style={styles.jarBaseGlow} />
 
             <MaterialCommunityIcons
-              name="flower-pollen"
+              name={visuals.points.jarTopIcon}
               size={22}
               color={colors.primary_fixed_variant}
               style={styles.jarIconTop}
             />
             <MaterialCommunityIcons
-              name="heart"
+              name={visuals.points.jarBottomIcon}
               size={20}
               color={colors.primary_fixed_variant}
               style={styles.jarIconBottom}
             />
             <MaterialCommunityIcons
-              name="leaf"
+              name={visuals.points.jarMiddleIcon}
               size={18}
               color={colors.primary_fixed_variant}
               style={styles.jarIconLeaf}
             />
           </View>
           <Text style={styles.jarHint}>
-            {pointsToNextUnlock > 0
-              ? `Almost there! Just ${formatPoints(pointsToNextUnlock)} more points until your next petal unlocks.`
-              : 'Your newest bloom is ready. More rewards can open in the next phase.'}
+            {!nextUnlock
+              ? 'You have unlocked every reward theme here. More horizons can bloom in the next phase.'
+              : pointsToNextUnlock > 0
+              ? `Almost there! Just ${formatPoints(pointsToNextUnlock)} more points until your next ${visuals.points.unlockNoun} unlocks.`
+              : 'Your next reward is ready. More themes can open in the next phase.'}
           </Text>
         </View>
 
@@ -163,7 +232,7 @@ export default function PointsScreen() {
 
           <View style={styles.weekRow}>
             {weekSummary.map((day, index) => {
-              const iconName = index % 2 === 0 ? 'flower-poppy' : 'leaf';
+              const iconName = visuals.points.streakIcons[index % visuals.points.streakIcons.length];
 
               return (
                 <View key={day.key} style={styles.dayColumn}>
@@ -192,8 +261,8 @@ export default function PointsScreen() {
 
           <Text style={styles.streakNote}>
             {completedDays > 0
-              ? `${completedDays} day${completedDays === 1 ? '' : 's'} bloomed this week.`
-              : 'Your first bloom this week will appear here.'}
+              ? `${completedDays} day${completedDays === 1 ? '' : 's'} completed this week.`
+              : 'Your first completed day this week will appear here.'}
           </Text>
         </View>
 
@@ -201,25 +270,25 @@ export default function PointsScreen() {
           <View style={styles.sectionRow}>
             <View>
               <Text style={styles.sectionHeading}>Reward Shop</Text>
-              <Text style={styles.sectionSubheading}>Trade your blossoms for new horizons.</Text>
+              <Text style={styles.sectionSubheading}>Trade your points for new horizons.</Text>
             </View>
           </View>
 
           <View style={styles.rewardGrid}>
             {REWARDS.map((reward) => {
               const affordable = points.total_points >= reward.cost;
-              const largeCard = reward.large === true;
+              const owned = ownsTheme(reward.themeId);
 
               return (
-                <View
+                <TouchableOpacity
                   key={reward.id}
+                  accessibilityRole="button"
+                  activeOpacity={0.92}
+                  onPress={() => handleRewardPress(reward)}
                   style={[
                     styles.rewardCard,
-                    largeCard && styles.rewardCardLarge,
                     {
-                      backgroundColor: largeCard
-                        ? colors.surface_container_highest
-                        : colors.surface_container_low,
+                      backgroundColor: owned ? colors.surface_container_highest : colors.surface_container_low,
                     },
                   ]}
                 >
@@ -229,50 +298,71 @@ export default function PointsScreen() {
                     end={{ x: 1, y: 1 }}
                     style={StyleSheet.absoluteFill}
                   />
+                  <MaterialCommunityIcons
+                    name={reward.icon}
+                    size={108}
+                    color={`${reward.accent}26`}
+                    style={styles.rewardArtBackground}
+                  />
 
-                  <View style={styles.rewardArt}>
-                    <MaterialCommunityIcons
-                      name={reward.icon}
-                      size={largeCard ? 38 : 34}
-                      color={reward.accent}
-                    />
-                    {!affordable && (
-                      <View style={styles.lockBadge}>
-                        <MaterialCommunityIcons name="lock" size={14} color={colors.surface} />
-                      </View>
-                    )}
-                  </View>
+                  {!owned ? (
+                    <View style={styles.lockBadge}>
+                      <MaterialCommunityIcons name="lock" size={14} color={colors.surface} />
+                    </View>
+                  ) : null}
 
-                  <Text style={[styles.rewardTitle, largeCard && styles.rewardTitleLarge]}>
-                    {reward.title}
-                  </Text>
+                  <Text style={styles.rewardTitle}>{reward.title}</Text>
                   <Text style={styles.rewardCost}>{formatPoints(reward.cost)} Points</Text>
 
                   <TouchableOpacity
                     accessibilityRole="button"
                     activeOpacity={0.9}
-                    disabled={!affordable}
+                    onPress={() => handleRewardPress(reward)}
                     style={[
                       styles.rewardButton,
-                      affordable ? styles.rewardButtonActive : styles.rewardButtonDisabled,
+                      owned
+                        ? styles.rewardButtonOwned
+                        : affordable
+                          ? styles.rewardButtonActive
+                          : styles.rewardButtonDisabled,
                     ]}
                   >
                     <Text
                       style={[
                         styles.rewardButtonText,
-                        !affordable && styles.rewardButtonTextDisabled,
+                        (owned || !affordable) && styles.rewardButtonTextDisabled,
                       ]}
                     >
-                      {affordable ? 'Ready Soon' : 'Keep Blooming'}
+                      {owned ? 'Owned' : affordable ? 'Unlock Theme' : 'Need More Points'}
                     </Text>
                   </TouchableOpacity>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>
         </View>
 
-        <QuoteFooter scope="points-tab-footer" shift={4} />
+        {isGoldenTheme ? (
+          <LinearGradient
+            colors={['#FFD67A', '#FFC933']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.sunburstCard}
+          >
+            <MaterialCommunityIcons
+              name="ticket-percent-outline"
+              size={54}
+              color={`${colors.primary}20`}
+              style={styles.sunburstCardArt}
+            />
+            <Text style={styles.sunburstCardTitle}>Keep it up, {userName ?? 'Rose'}!</Text>
+            <Text style={styles.sunburstCardText}>
+              Complete a few more reminders today to grow your next golden petal.
+            </Text>
+          </LinearGradient>
+        ) : null}
+
+        {!isGoldenTheme ? <QuoteFooter scope="points-tab-footer" shift={4} /> : null}
       </ScrollView>
     </View>
   );
@@ -318,6 +408,18 @@ const createStyles = (colors: typeof Colors) =>
       borderRadius: 66,
       backgroundColor: colors.primary_container,
       opacity: 0.18,
+    },
+    backgroundIconTop: {
+      position: 'absolute',
+      top: 96,
+      right: -18,
+      opacity: 0.82,
+    },
+    backgroundIconBottom: {
+      position: 'absolute',
+      bottom: 132,
+      left: -22,
+      opacity: 0.72,
     },
     headerContent: {
       paddingRight: Spacing.item,
@@ -368,6 +470,20 @@ const createStyles = (colors: typeof Colors) =>
       fontSize: 24,
       color: colors.primary,
     },
+    collectionBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.hair,
+      paddingHorizontal: Spacing.item,
+      paddingVertical: Spacing.compact,
+      borderRadius: Radius.full,
+      backgroundColor: '#FFE89A',
+    },
+    collectionBadgeText: {
+      fontFamily: FontFamily.bold,
+      fontSize: 14,
+      color: colors.secondary,
+    },
     jarWrap: {
       alignItems: 'center',
       gap: Spacing.generous,
@@ -376,9 +492,9 @@ const createStyles = (colors: typeof Colors) =>
       width: 212,
       height: 272,
       borderRadius: 42,
-      backgroundColor: 'rgba(255,255,255,0.45)',
-      borderWidth: 4,
-      borderColor: `${colors.primary}33`,
+      backgroundColor: `${colors.surface_container_lowest}C4`,
+      borderWidth: 2,
+      borderColor: `${colors.outline_variant}66`,
       overflow: 'hidden',
       position: 'relative',
       justifyContent: 'flex-end',
@@ -394,6 +510,16 @@ const createStyles = (colors: typeof Colors) =>
       backgroundColor: colors.primary_container,
       zIndex: 2,
     },
+    jarHighlight: {
+      position: 'absolute',
+      top: 26,
+      left: 26,
+      width: 52,
+      height: 132,
+      borderRadius: 26,
+      backgroundColor: 'rgba(255,255,255,0.22)',
+      zIndex: 1,
+    },
     jarFill: {
       position: 'absolute',
       left: 18,
@@ -404,6 +530,15 @@ const createStyles = (colors: typeof Colors) =>
       borderTopLeftRadius: 16,
       borderTopRightRadius: 16,
       overflow: 'hidden',
+    },
+    jarBaseGlow: {
+      position: 'absolute',
+      left: 14,
+      right: 14,
+      bottom: 10,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: `${colors.primary}12`,
     },
     jarIconTop: {
       position: 'absolute',
@@ -521,6 +656,33 @@ const createStyles = (colors: typeof Colors) =>
     rewardsSection: {
       gap: Spacing.cozy,
     },
+    sunburstCard: {
+      position: 'relative',
+      overflow: 'hidden',
+      borderRadius: Radius.xl,
+      paddingHorizontal: Spacing.breathe,
+      paddingVertical: Spacing.breathe,
+      ...Elevation.low,
+    },
+    sunburstCardArt: {
+      position: 'absolute',
+      right: -10,
+      bottom: 2,
+    },
+    sunburstCardTitle: {
+      fontFamily: FontFamily.extraBold,
+      fontSize: 24,
+      lineHeight: 30,
+      color: colors.on_surface,
+      marginBottom: Spacing.compact,
+    },
+    sunburstCardText: {
+      maxWidth: '78%',
+      fontFamily: FontFamily.regular,
+      fontSize: 16,
+      lineHeight: 28,
+      color: colors.on_surface,
+    },
     viewAll: {
       fontFamily: FontFamily.bold,
       fontSize: 14,
@@ -540,25 +702,15 @@ const createStyles = (colors: typeof Colors) =>
       justifyContent: 'flex-end',
       ...Elevation.low,
     },
-    rewardCardLarge: {
-      width: '100%',
-      minHeight: 224,
-    },
-    rewardArt: {
+    rewardArtBackground: {
       position: 'absolute',
-      top: Spacing.generous,
-      left: Spacing.generous,
-      width: 68,
-      height: 68,
-      borderRadius: 24,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: 'rgba(255,255,255,0.55)',
+      top: 8,
+      right: -10,
     },
     lockBadge: {
       position: 'absolute',
-      top: -6,
-      right: -6,
+      top: Spacing.generous,
+      right: Spacing.generous,
       width: 26,
       height: 26,
       borderRadius: 13,
@@ -567,15 +719,12 @@ const createStyles = (colors: typeof Colors) =>
       backgroundColor: colors.primary_fixed_variant,
     },
     rewardTitle: {
+      maxWidth: '82%',
       fontFamily: FontFamily.bold,
       fontSize: 20,
       lineHeight: 24,
       color: colors.on_surface,
       marginBottom: Spacing.hair,
-    },
-    rewardTitleLarge: {
-      fontSize: 28,
-      lineHeight: 32,
     },
     rewardCost: {
       fontFamily: FontFamily.bold,
@@ -592,6 +741,11 @@ const createStyles = (colors: typeof Colors) =>
     },
     rewardButtonActive: {
       backgroundColor: colors.primary,
+    },
+    rewardButtonOwned: {
+      backgroundColor: colors.surface_container_lowest,
+      borderWidth: 1,
+      borderColor: `${colors.primary}2A`,
     },
     rewardButtonDisabled: {
       backgroundColor: colors.surface_container_lowest,

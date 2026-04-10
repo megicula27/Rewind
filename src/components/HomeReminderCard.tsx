@@ -33,27 +33,29 @@ export interface HomeReminderCardProps {
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
-function getTypeVisuals(colors: ThemeColors) {
+function getTypeVisuals(colors: ThemeColors, themeName: string) {
+  const isGoldenTheme = themeName === 'golden_sun';
+
   return {
     medicine: {
-      badge: colors.primary_fixed,
+      badge: isGoldenTheme ? '#FFF1C8' : colors.primary_fixed,
       icon: colors.primary_fixed_variant,
       iconName: 'medical-bag',
     },
     food: {
-      badge: colors.secondary_container,
+      badge: isGoldenTheme ? colors.surface_container_high : colors.secondary_container,
       icon: colors.secondary,
       iconName: 'silverware-fork-knife',
     },
     water: {
-      badge: colors.primary_container,
+      badge: isGoldenTheme ? '#FFF1C8' : colors.primary_container,
       icon: colors.primary,
-      iconName: 'dumbbell',
+      iconName: isGoldenTheme ? 'water' : 'dumbbell',
     },
     custom: {
-      badge: colors.surface_container_high,
+      badge: isGoldenTheme ? '#FFF1C8' : colors.surface_container_high,
       icon: colors.primary_fixed_variant,
-      iconName: 'sparkles',
+      iconName: isGoldenTheme ? 'heart' : 'sparkles',
     },
   } as const;
 }
@@ -69,14 +71,14 @@ export default function HomeReminderCard({
   onLongPress,
   index = 0,
 }: HomeReminderCardProps) {
-  const { colors } = useTheme();
+  const { colors, themeName } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const pressed = useSharedValue(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
   const trimmedDescription = description?.trim() ?? '';
   const hasDescription = trimmedDescription.length > 0;
-  const typeVisuals = getTypeVisuals(colors);
+  const typeVisuals = getTypeVisuals(colors, themeName);
   const typeConfig = typeVisuals[type] ?? typeVisuals.custom;
   const bgColor =
     index % 2 === 0 ? colors.surface_container_lowest : colors.surface_container_low;

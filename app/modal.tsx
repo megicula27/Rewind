@@ -4,12 +4,15 @@
 
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Colors } from '@/src/theme/colors';
+import type { ThemeColors } from '@/src/theme/colors';
+import { useTheme } from '@/src/theme/ThemeContext';
 import { FontFamily } from '@/src/theme/typography';
 import { Spacing, Radius } from '@/src/theme/spacing';
 
 export default function ModalScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
 
   return (
     <View style={styles.container}>
@@ -26,33 +29,34 @@ export default function ModalScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surface,
-    padding: Spacing.breathe,
-  },
-  title: {
-    fontSize: 48,
-    marginBottom: Spacing.cozy,
-  },
-  subtitle: {
-    fontFamily: FontFamily.bold,
-    fontSize: 24,
-    color: Colors.on_surface,
-    marginBottom: Spacing.generous,
-  },
-  button: {
-    paddingHorizontal: Spacing.breathe,
-    paddingVertical: Spacing.cozy,
-    backgroundColor: Colors.primary_container,
-    borderRadius: Radius.full,
-  },
-  buttonText: {
-    fontFamily: FontFamily.semiBold,
-    fontSize: 16,
-    color: Colors.primary,
-  },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+      padding: Spacing.breathe,
+    },
+    title: {
+      fontSize: 48,
+      marginBottom: Spacing.cozy,
+    },
+    subtitle: {
+      fontFamily: FontFamily.bold,
+      fontSize: 24,
+      color: colors.on_surface,
+      marginBottom: Spacing.generous,
+    },
+    button: {
+      paddingHorizontal: Spacing.breathe,
+      paddingVertical: Spacing.cozy,
+      backgroundColor: colors.primary_container,
+      borderRadius: Radius.full,
+    },
+    buttonText: {
+      fontFamily: FontFamily.semiBold,
+      fontSize: 16,
+      color: colors.primary,
+    },
+  });

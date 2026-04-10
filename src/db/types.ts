@@ -7,7 +7,8 @@
 
 // ── Reminder ───────────────────────────────────────
 export type ReminderType = 'medicine' | 'food' | 'water' | 'custom';
-export type ReminderFrequency = 'daily' | 'weekly' | 'monthly' | 'once';
+export type ReminderFrequency = 'daily' | 'weekly' | 'monthly' | 'once' | 'custom_interval';
+export type ReminderIntervalUnit = 'day' | 'month';
 
 export interface Reminder {
   id: number;
@@ -21,6 +22,8 @@ export interface Reminder {
   day_of_week: number | null;   // 0=Sun, 1=Mon ... 6=Sat (for weekly)
   day_of_month: number | null;  // 1–31 (for monthly)
   once_date: string | null;
+  interval_value: number | null;
+  interval_unit: ReminderIntervalUnit | null;
   sound_id: number | null;
   is_active: number;            // 0 | 1 (SQLite boolean)
   created_at: string;
@@ -38,6 +41,8 @@ export interface CreateReminderInput {
   day_of_week?: number;
   day_of_month?: number;
   once_date?: string;
+  interval_value?: number;
+  interval_unit?: ReminderIntervalUnit;
   sound_id?: number;
 }
 
@@ -140,6 +145,14 @@ export function buildTimeLabel(reminder: Reminder, completion: CompletionLog | n
     freq = ` · Every ${getDayName(reminder.day_of_week, true)}`;
   } else if (reminder.frequency === 'monthly' && reminder.day_of_month !== null) {
     freq = ` · Day ${reminder.day_of_month}`;
+  } else if (reminder.frequency === 'custom_interval' && reminder.interval_value && reminder.interval_unit) {
+    if (reminder.interval_unit === 'day') {
+      freq = ` · Every ${reminder.interval_value} day${reminder.interval_value === 1 ? '' : 's'}`;
+    } else if (reminder.day_of_month !== null) {
+      freq = ` · Every ${reminder.interval_value} month${reminder.interval_value === 1 ? '' : 's'} on day ${reminder.day_of_month}`;
+    } else {
+      freq = ` · Every ${reminder.interval_value} month${reminder.interval_value === 1 ? '' : 's'}`;
+    }
   }
   
   return `Scheduled for ${time}${freq}`;

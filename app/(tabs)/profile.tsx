@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -14,58 +14,62 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import QuoteFooter from '@/src/components/QuoteFooter';
-import { Colors } from '@/src/theme/colors';
+import { useSounds } from '@/src/hooks/useSounds';
+import {
+  DEFAULT_HYDRATION_SOUND_FILE,
+  getBundledSoundDefinitionByUri,
+  getSoundVisual,
+} from '@/src/sounds/catalog';
+import { Colors, type ThemeName } from '@/src/theme/colors';
 import { Elevation } from '@/src/theme/elevation';
 import { Radius, Spacing } from '@/src/theme/spacing';
 import { useTheme } from '@/src/theme/ThemeContext';
+import { getThemeVisuals } from '@/src/theme/visuals';
 import { FontFamily } from '@/src/theme/typography';
 
 type ThemeOption = {
-  id: string;
+  id: ThemeName;
   title: string;
   subtitle: string;
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
   accent: string;
   accentSoft: string;
-  available: boolean;
 };
+
+type SectionKey = 'notifications' | 'water' | 'name' | 'themes';
 
 const THEME_OPTIONS: ThemeOption[] = [
   {
     id: 'cherry_blossom',
     title: 'Sakura Bloom',
-    subtitle: 'Active now',
+    subtitle: 'Classic warmth',
     icon: 'flower-poppy',
     accent: '#D87093',
     accentSoft: '#FFE4EC',
-    available: true,
   },
   {
-    id: 'sky_ocean',
-    title: 'Sky & Ocean',
-    subtitle: 'Reward shop unlock',
-    icon: 'weather-partly-cloudy',
-    accent: '#6C9FCF',
-    accentSoft: '#DDECF8',
-    available: false,
+    id: 'aquatic_serenity',
+    title: 'Aquatic Serenity',
+    subtitle: 'Calm tidal glow',
+    icon: 'waves',
+    accent: '#475D82',
+    accentSoft: '#DCEAF9',
   },
   {
     id: 'jungle_deep',
     title: 'Jungle Deep',
-    subtitle: 'Reward shop unlock',
+    subtitle: 'Earthy canopy calm',
     icon: 'pine-tree',
-    accent: '#7C9070',
-    accentSoft: '#E3ECD8',
-    available: false,
+    accent: '#556B2F',
+    accentSoft: '#E7EED0',
   },
   {
     id: 'golden_sun',
-    title: 'Golden Sun',
-    subtitle: 'Reward shop unlock',
+    title: 'Golden Sunburst',
+    subtitle: 'Warm sunlit glow',
     icon: 'white-balance-sunny',
-    accent: '#D7A347',
-    accentSoft: '#FBE8BC',
-    available: false,
+    accent: '#904800',
+    accentSoft: '#FFE2A6',
   },
 ];
 
@@ -78,13 +82,50 @@ export default function ProfileScreen() {
     notificationsEnabled,
     setNotificationsEnabled,
     themeName,
+    setThemeName,
+    hydrationSoundFile,
+    setHydrationSoundFile,
   } = useTheme();
+  const { sounds, loading: soundsLoading } = useSounds();
   const styles = createStyles(colors);
+  const visuals = getThemeVisuals(themeName);
   const [draftName, setDraftName] = useState(userName ?? '');
+  const [expandedSections, setExpandedSections] = useState<Record<SectionKey, boolean>>({
+    notifications: false,
+    water: false,
+    name: false,
+    themes: false,
+  });
 
   useEffect(() => {
     setDraftName(userName ?? '');
   }, [userName]);
+
+  const bundledHydrationSounds = useMemo(
+    () => sounds.filter((sound) => Boolean(getBundledSoundDefinitionByUri(sound.file_uri))),
+    [sounds]
+  );
+
+  const activeThemeTitle =
+    THEME_OPTIONS.find((theme) => theme.id === themeName)?.title ?? 'Theme selected';
+
+  const activeHydrationSound =
+    bundledHydrationSounds.find(
+      (sound) => getBundledSoundDefinitionByUri(sound.file_uri)?.fileName === hydrationSoundFile
+    ) ??
+    bundledHydrationSounds.find(
+      (sound) =>
+        getBundledSoundDefinitionByUri(sound.file_uri)?.fileName === DEFAULT_HYDRATION_SOUND_FILE
+    ) ??
+    bundledHydrationSounds[0] ??
+    null;
+
+  const toggleSection = (section: SectionKey) => {
+    setExpandedSections((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
+  };
 
   const saveName = () => {
     const trimmed = draftName.trim();
@@ -98,12 +139,22 @@ export default function ProfileScreen() {
   };
 
   const handleThemePress = (theme: ThemeOption) => {
-    if (!theme.available) {
-      Alert.alert('Locked for now', `${theme.title} will plug into the reward unlock flow next.`);
+    if (theme.id === themeName) {
+      Alert.alert('Theme active', `${theme.title} is already your active theme.`);
       return;
     }
 
-    Alert.alert('Theme active', `${theme.title} is already your active theme.`);
+    setThemeName(theme.id);
+    Alert.alert('Theme changed', `${theme.title} is now active across the app.`);
+  };
+
+  const handleHydrationSoundPress = (fileName: string, soundName: string) => {
+    if (fileName === hydrationSoundFile) {
+      return;
+    }
+
+    setHydrationSoundFile(fileName);
+    Alert.alert('Water sound changed', `${soundName} will now be used for hydration reminders.`);
   };
 
   const headerPaddingTop = insets.top + Spacing.compact;
@@ -125,117 +176,231 @@ export default function ProfileScreen() {
           <View style={styles.headerGlow} />
           <View style={styles.headerTitleRow}>
             <View style={styles.headerBadge}>
-              <MaterialCommunityIcons name="flower-tulip-outline" size={17} color={colors.primary_fixed_variant} />
+              <MaterialCommunityIcons
+                name={visuals.profile.headerIcon}
+                size={17}
+                color={colors.primary_fixed_variant}
+              />
             </View>
             <Text style={styles.headerTitle}>Profile & Settings</Text>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Notifications</Text>
-          <View style={styles.settingCard}>
-            <View style={styles.settingCopy}>
-              <Text style={styles.settingTitle}>Reminder notifications</Text>
-              <Text style={styles.settingSubtitle}>
-                Turn scheduled reminder alerts on or off across the app.
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => toggleSection('notifications')}
+            style={styles.sectionHeaderCard}
+          >
+            <View style={styles.sectionHeaderCopy}>
+              <Text style={styles.sectionLabel}>Notifications</Text>
+              <Text style={styles.sectionSummary}>
+                {notificationsEnabled ? 'Scheduled reminders are on' : 'Scheduled reminders are off'}
               </Text>
             </View>
+            <View style={styles.sectionChevron}>
+              <MaterialCommunityIcons
+                name={expandedSections.notifications ? 'chevron-up' : 'chevron-down'}
+                size={22}
+                color={colors.primary_fixed_variant}
+              />
+            </View>
+          </TouchableOpacity>
+          {expandedSections.notifications ? (
+            <View style={styles.settingCard}>
+              <View style={styles.settingCopy}>
+                <Text style={styles.settingTitle}>Reminder notifications</Text>
+                <Text style={styles.settingSubtitle}>
+                  Turn scheduled reminder alerts on or off across the app.
+                </Text>
+              </View>
 
-            <Switch
-              value={notificationsEnabled}
-              onValueChange={setNotificationsEnabled}
-              trackColor={{ false: colors.outline_variant, true: colors.primary_container }}
-              thumbColor={notificationsEnabled ? colors.primary : colors.surface_container_lowest}
-            />
-          </View>
-          <Text style={styles.helperText}>
-            Helpful tip: the 10 second water timer is still the fastest way to test alerts.
-          </Text>
+              <Switch
+                value={notificationsEnabled}
+                onValueChange={setNotificationsEnabled}
+                trackColor={{ false: colors.outline_variant, true: colors.primary_container }}
+                thumbColor={notificationsEnabled ? colors.primary : colors.surface_container_lowest}
+              />
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Change Name</Text>
-          <View style={styles.editorCard}>
-            <Text style={styles.inputLabel}>What should Rewind call you?</Text>
-            <TextInput
-              value={draftName}
-              onChangeText={setDraftName}
-              placeholder="Your name"
-              placeholderTextColor={colors.outline}
-              style={styles.nameInput}
-              maxLength={40}
-            />
-            <TouchableOpacity style={styles.saveButton} activeOpacity={0.85} onPress={saveName}>
-              <Text style={styles.saveButtonText}>Save Name</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => toggleSection('water')}
+            style={styles.sectionHeaderCard}
+          >
+            <View style={styles.sectionHeaderCopy}>
+              <Text style={styles.sectionLabel}>Water Settings</Text>
+              <Text style={styles.sectionSummary}>
+                {activeHydrationSound?.name ?? 'Choose a hydration sound'}
+              </Text>
+            </View>
+            <View style={styles.sectionChevron}>
+              <MaterialCommunityIcons
+                name={expandedSections.water ? 'chevron-up' : 'chevron-down'}
+                size={22}
+                color={colors.primary_fixed_variant}
+              />
+            </View>
+          </TouchableOpacity>
+          {expandedSections.water ? (
+            <View style={styles.editorCard}>
+              <Text style={styles.inputLabel}>Hydration timer sound</Text>
+              <Text style={styles.settingSubtitle}>
+                Pick the bundled tone that should play for your repeating water reminder.
+              </Text>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Theme Selection</Text>
-          <View style={styles.themeGrid}>
-            {THEME_OPTIONS.map((theme) => {
-              const isActive = theme.id === themeName;
+              {soundsLoading ? (
+                <Text style={styles.soundLoadingText}>Loading your sound library...</Text>
+              ) : (
+                bundledHydrationSounds.map((sound) => {
+                  const definition = getBundledSoundDefinitionByUri(sound.file_uri);
+                  const visual = getSoundVisual(sound);
+                  const fileName = definition?.fileName ?? DEFAULT_HYDRATION_SOUND_FILE;
+                  const isSelected = fileName === hydrationSoundFile;
 
-              return (
-                <TouchableOpacity
-                  key={theme.id}
-                  activeOpacity={0.88}
-                  style={[
-                    styles.themeCard,
-                    isActive && styles.themeCardActive,
-                    { backgroundColor: isActive ? colors.primary_fixed : colors.surface_container_lowest },
-                  ]}
-                  onPress={() => handleThemePress(theme)}
-                >
-                  <LinearGradient
-                    colors={[`${theme.accentSoft}F4`, `${theme.accent}26`]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFill}
-                  />
-
-                  <View style={styles.themeIconWrap}>
-                    <MaterialCommunityIcons name={theme.icon} size={26} color={theme.accent} />
-                    {!theme.available ? (
-                      <View style={styles.themeLockBadge}>
-                        <MaterialCommunityIcons name="lock" size={12} color={colors.surface} />
-                      </View>
-                    ) : null}
-                  </View>
-
-                  <Text style={styles.themeTitle}>{theme.title}</Text>
-                  <Text style={styles.themeSubtitle}>{theme.subtitle}</Text>
-
-                  <View
-                    style={[
-                      styles.themeButton,
-                      isActive ? styles.themeButtonActive : styles.themeButtonLocked,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.themeButtonText,
-                        !isActive && styles.themeButtonTextLocked,
-                      ]}
-                      numberOfLines={1}
+                  return (
+                    <TouchableOpacity
+                      key={sound.id}
+                      activeOpacity={0.85}
+                      onPress={() => handleHydrationSoundPress(fileName, sound.name)}
+                      style={[styles.soundRow, isSelected && styles.soundRowActive]}
                     >
-                      {isActive ? 'Active Theme' : 'Keep Blooming'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+                      <View style={[styles.soundBubble, { backgroundColor: visual.backgroundColor }]}>
+                        <Text style={styles.soundEmoji}>{visual.emoji}</Text>
+                      </View>
+
+                      <View style={styles.soundMeta}>
+                        <Text style={styles.soundName}>{sound.name}</Text>
+                        <Text style={styles.soundCaption}>Bundled notification tone</Text>
+                      </View>
+
+                      <MaterialCommunityIcons
+                        name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
+                        size={24}
+                        color={isSelected ? colors.primary : colors.outline}
+                      />
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Quick Tips</Text>
-          <View style={styles.tipsCard}>
-            <Text style={styles.tipLine}>Use the water timer for a quick notification check.</Text>
-            <Text style={styles.tipLine}>Long press reminders or custom sounds to remove them.</Text>
-            <Text style={styles.tipLine}>Reward themes are staged here so the unlock flow can plug in later.</Text>
-          </View>
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => toggleSection('name')}
+            style={styles.sectionHeaderCard}
+          >
+            <View style={styles.sectionHeaderCopy}>
+              <Text style={styles.sectionLabel}>Change Name</Text>
+              <Text style={styles.sectionSummary}>{userName?.trim() || 'Set your display name'}</Text>
+            </View>
+            <View style={styles.sectionChevron}>
+              <MaterialCommunityIcons
+                name={expandedSections.name ? 'chevron-up' : 'chevron-down'}
+                size={22}
+                color={colors.primary_fixed_variant}
+              />
+            </View>
+          </TouchableOpacity>
+          {expandedSections.name ? (
+            <View style={styles.editorCard}>
+              <Text style={styles.inputLabel}>What should Rewind call you?</Text>
+              <TextInput
+                value={draftName}
+                onChangeText={setDraftName}
+                placeholder="Your name"
+                placeholderTextColor={colors.outline}
+                style={styles.nameInput}
+                maxLength={40}
+              />
+              <TouchableOpacity style={styles.saveButton} activeOpacity={0.85} onPress={saveName}>
+                <Text style={styles.saveButtonText}>Save Name</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.section}>
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => toggleSection('themes')}
+            style={styles.sectionHeaderCard}
+          >
+            <View style={styles.sectionHeaderCopy}>
+              <Text style={styles.sectionLabel}>Theme Selection</Text>
+              <Text style={styles.sectionSummary}>{activeThemeTitle}</Text>
+            </View>
+            <View style={styles.sectionChevron}>
+              <MaterialCommunityIcons
+                name={expandedSections.themes ? 'chevron-up' : 'chevron-down'}
+                size={22}
+                color={colors.primary_fixed_variant}
+              />
+            </View>
+          </TouchableOpacity>
+          {expandedSections.themes ? (
+            <View style={styles.themeGrid}>
+              {THEME_OPTIONS.map((theme) => {
+                const isActive = theme.id === themeName;
+
+                return (
+                  <TouchableOpacity
+                    key={theme.id}
+                    activeOpacity={0.88}
+                    style={[
+                      styles.themeCard,
+                      isActive && styles.themeCardActive,
+                      {
+                        backgroundColor: isActive
+                          ? colors.primary_fixed
+                          : colors.surface_container_lowest,
+                      },
+                    ]}
+                    onPress={() => handleThemePress(theme)}
+                  >
+                    <LinearGradient
+                      colors={[`${theme.accentSoft}F4`, `${theme.accent}26`]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                    <MaterialCommunityIcons
+                      name={theme.icon}
+                      size={102}
+                      color={`${theme.accent}2C`}
+                      style={styles.themeArt}
+                    />
+
+                    <Text style={styles.themeTitle}>{theme.title}</Text>
+                    <Text style={styles.themeSubtitle}>{theme.subtitle}</Text>
+
+                    <View
+                      style={[
+                        styles.themeButton,
+                        isActive ? styles.themeButtonActive : styles.themeButtonLocked,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.themeButtonText,
+                          !isActive && styles.themeButtonTextLocked,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {isActive ? 'Active Theme' : 'Try Theme'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : null}
         </View>
 
         <QuoteFooter scope="profile-tab-footer" shift={5} />
@@ -301,6 +466,22 @@ const createStyles = (colors: typeof Colors) =>
     section: {
       gap: Spacing.cozy,
     },
+    sectionHeaderCard: {
+      minHeight: 72,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: Spacing.item,
+      paddingHorizontal: Spacing.generous,
+      paddingVertical: Spacing.cozy,
+      borderRadius: Radius.xl,
+      backgroundColor: colors.surface_container_lowest,
+      ...Elevation.low,
+    },
+    sectionHeaderCopy: {
+      flex: 1,
+      gap: 4,
+    },
     sectionLabel: {
       fontFamily: FontFamily.semiBold,
       fontSize: 12,
@@ -308,13 +489,27 @@ const createStyles = (colors: typeof Colors) =>
       textTransform: 'uppercase',
       color: colors.primary_fixed_variant,
     },
+    sectionSummary: {
+      fontFamily: FontFamily.bold,
+      fontSize: 18,
+      lineHeight: 24,
+      color: colors.on_surface,
+    },
+    sectionChevron: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary_fixed,
+    },
     settingCard: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: Spacing.cozy,
       padding: Spacing.generous,
       borderRadius: Radius.xl,
-      backgroundColor: colors.surface_container_lowest,
+      backgroundColor: colors.surface_container_low,
       ...Elevation.low,
     },
     settingCopy: {
@@ -332,16 +527,10 @@ const createStyles = (colors: typeof Colors) =>
       lineHeight: 20,
       color: colors.on_surface_variant,
     },
-    helperText: {
-      fontFamily: FontFamily.medium,
-      fontSize: 14,
-      lineHeight: 20,
-      color: colors.on_surface_variant,
-    },
     editorCard: {
       padding: Spacing.generous,
       borderRadius: Radius.xl,
-      backgroundColor: colors.surface_container_lowest,
+      backgroundColor: colors.surface_container_low,
       gap: Spacing.cozy,
       ...Elevation.low,
     },
@@ -372,6 +561,49 @@ const createStyles = (colors: typeof Colors) =>
       fontSize: 16,
       color: colors.on_primary,
     },
+    soundLoadingText: {
+      fontFamily: FontFamily.medium,
+      fontSize: 15,
+      color: colors.on_surface_variant,
+      paddingVertical: Spacing.compact,
+    },
+    soundRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.cozy,
+      minHeight: 58,
+      paddingHorizontal: Spacing.cozy,
+      paddingVertical: Spacing.compact,
+      borderRadius: Radius.lg,
+      backgroundColor: colors.surface_container_lowest,
+    },
+    soundRowActive: {
+      backgroundColor: colors.primary_fixed,
+    },
+    soundBubble: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    soundEmoji: {
+      fontSize: 20,
+    },
+    soundMeta: {
+      flex: 1,
+    },
+    soundName: {
+      fontFamily: FontFamily.bold,
+      fontSize: 16,
+      color: colors.on_surface,
+    },
+    soundCaption: {
+      marginTop: 2,
+      fontFamily: FontFamily.medium,
+      fontSize: 13,
+      color: colors.on_surface_variant,
+    },
     themeGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -390,29 +622,13 @@ const createStyles = (colors: typeof Colors) =>
       borderWidth: 1,
       borderColor: `${colors.primary}24`,
     },
-    themeIconWrap: {
+    themeArt: {
       position: 'absolute',
-      top: Spacing.generous,
-      left: Spacing.generous,
-      width: 62,
-      height: 62,
-      borderRadius: 22,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: 'rgba(255,255,255,0.58)',
-    },
-    themeLockBadge: {
-      position: 'absolute',
-      top: -4,
-      right: -4,
-      width: 22,
-      height: 22,
-      borderRadius: 11,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.primary_fixed_variant,
+      top: 8,
+      right: -8,
     },
     themeTitle: {
+      maxWidth: '78%',
       fontFamily: FontFamily.bold,
       fontSize: 22,
       lineHeight: 27,
@@ -449,18 +665,5 @@ const createStyles = (colors: typeof Colors) =>
     },
     themeButtonTextLocked: {
       color: colors.primary_fixed_variant,
-    },
-    tipsCard: {
-      padding: Spacing.generous,
-      borderRadius: Radius.xl,
-      backgroundColor: colors.surface_container_lowest,
-      gap: Spacing.item,
-      ...Elevation.low,
-    },
-    tipLine: {
-      fontFamily: FontFamily.medium,
-      fontSize: 15,
-      lineHeight: 22,
-      color: colors.on_surface_variant,
     },
   });

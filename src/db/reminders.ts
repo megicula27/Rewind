@@ -27,12 +27,14 @@ export async function createReminder(
     day_of_week: input.day_of_week ?? null,
     day_of_month: input.day_of_month ?? null,
     once_date: input.once_date ?? null,
+    interval_value: input.interval_value ?? null,
+    interval_unit: input.interval_unit ?? null,
     sound_id: input.sound_id ?? null,
   };
 
   const result = await db.runAsync(
-    `INSERT INTO reminders (name, description, type, icon, frequency, time_hour, time_minute, day_of_week, day_of_month, once_date, sound_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO reminders (name, description, type, icon, frequency, time_hour, time_minute, day_of_week, day_of_month, once_date, interval_value, interval_unit, sound_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       normalizedInput.name,
       normalizedInput.description,
@@ -44,6 +46,8 @@ export async function createReminder(
       normalizedInput.day_of_week,
       normalizedInput.day_of_month,
       normalizedInput.once_date,
+      normalizedInput.interval_value,
+      normalizedInput.interval_unit,
       normalizedInput.sound_id,
     ]
   );
@@ -80,6 +84,30 @@ export async function getRemindersWithTodayStatus(
       if (reminder.frequency === 'weekly') return reminder.day_of_week === todayDayOfWeek;
       if (reminder.frequency === 'monthly') return reminder.day_of_month === todayDayOfMonth;
       if (reminder.frequency === 'once') return reminder.once_date === today;
+      if (reminder.frequency === 'custom_interval') {
+        if (!reminder.interval_value || !reminder.interval_unit) {
+          return false;
+        }
+
+        const startDate = new Date(reminder.created_at.replace(' ', 'T'));
+        startDate.setHours(0, 0, 0, 0);
+        const compareDate = new Date(now);
+        compareDate.setHours(0, 0, 0, 0);
+
+        if (reminder.interval_unit === 'day') {
+          const diffDays = Math.floor((compareDate.getTime() - startDate.getTime()) / 86400000);
+          return diffDays >= 0 && diffDays % reminder.interval_value === 0;
+        }
+
+        if (reminder.day_of_month !== todayDayOfMonth) {
+          return false;
+        }
+
+        const diffMonths =
+          (compareDate.getFullYear() - startDate.getFullYear()) * 12 +
+          (compareDate.getMonth() - startDate.getMonth());
+        return diffMonths >= 0 && diffMonths % reminder.interval_value === 0;
+      }
       return false;
     })
     .map((r) => ({
@@ -113,6 +141,8 @@ export async function updateReminder(
   if (updates.day_of_week !== undefined) { fields.push('day_of_week = ?'); values.push(updates.day_of_week); }
   if (updates.day_of_month !== undefined) { fields.push('day_of_month = ?'); values.push(updates.day_of_month); }
   if (updates.once_date !== undefined) { fields.push('once_date = ?'); values.push(updates.once_date); }
+  if (updates.interval_value !== undefined) { fields.push('interval_value = ?'); values.push(updates.interval_value); }
+  if (updates.interval_unit !== undefined) { fields.push('interval_unit = ?'); values.push(updates.interval_unit); }
   if (updates.sound_id !== undefined) { fields.push('sound_id = ?'); values.push(updates.sound_id); }
 
   if (fields.length === 0) return;

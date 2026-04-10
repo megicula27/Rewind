@@ -39,10 +39,11 @@ import { Elevation } from '@/src/theme/elevation';
 import { Spacing, Radius } from '@/src/theme/spacing';
 import { useTheme } from '@/src/theme/ThemeContext';
 import { FontFamily } from '@/src/theme/typography';
+import { getThemeVisuals } from '@/src/theme/visuals';
 import { getGreeting, getProgressMessage } from '@/src/utils/greetings';
 
 export default function HomeScreen() {
-  const { userName, colors } = useTheme();
+  const { userName, colors, themeName } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { reminders, loading, refresh, completeReminder, removeReminder } = useReminders();
@@ -52,6 +53,8 @@ export default function HomeScreen() {
   const [dialValue, setDialValue] = useState(10);
   const [savingCompletion, setSavingCompletion] = useState(false);
   const styles = createStyles(colors);
+  const visuals = getThemeVisuals(themeName);
+  const isGoldenTheme = themeName === 'golden_sun';
 
   const completedCount = reminders.filter((r) => r.todayCompletion !== null).length;
   const totalCount = reminders.length;
@@ -140,9 +143,25 @@ export default function HomeScreen() {
   return (
     <View style={styles.screen}>
       <LinearGradient
-        colors={[colors.surface, colors.tertiary, colors.surface_container_low]}
+        colors={
+          isGoldenTheme
+            ? [colors.surface, '#FFF3C4', colors.surface_container_low]
+            : [colors.surface, colors.tertiary, colors.surface_container_low]
+        }
         locations={[0, 0.3, 1]}
         style={StyleSheet.absoluteFill}
+      />
+      <MaterialCommunityIcons
+        name={visuals.home.backgroundTop}
+        size={106}
+        color={`${colors.primary}18`}
+        style={styles.backgroundIconTop}
+      />
+      <MaterialCommunityIcons
+        name={visuals.home.backgroundBottom}
+        size={116}
+        color={`${colors.secondary}16`}
+        style={styles.backgroundIconBottom}
       />
 
       <ScrollView
@@ -164,12 +183,34 @@ export default function HomeScreen() {
         {/* ── Header Bar ─────────────────────────────── */}
         <Animated.View 
           entering={FadeInDown.duration(500).delay(100)}
-          style={[styles.headerBar, { paddingTop: headerPaddingTop }]}
+          style={[
+            styles.headerBar,
+            {
+              paddingTop: headerPaddingTop,
+              backgroundColor: isGoldenTheme ? colors.surface : colors.primary_fixed,
+              borderBottomLeftRadius: isGoldenTheme ? 0 : Radius.xxl + 12,
+              borderBottomRightRadius: isGoldenTheme ? 0 : Radius.xxl + 12,
+              marginBottom: isGoldenTheme ? Spacing.item : Spacing.breathe + Spacing.compact,
+              minHeight: isGoldenTheme ? 78 : 104,
+            },
+          ]}
         >
-          <View style={styles.headerGlow} />
+          {!isGoldenTheme ? <View style={styles.headerGlow} /> : null}
 
           <View style={styles.greetingWrap}>
-            <Text style={styles.greetingText}>{greeting}</Text>
+            {isGoldenTheme ? (
+              <View style={styles.greetingRow}>
+                <Text style={styles.greetingText}>{greeting}</Text>
+                <MaterialCommunityIcons
+                  name="white-balance-sunny"
+                  size={22}
+                  color={colors.primary_container}
+                  style={styles.greetingSun}
+                />
+              </View>
+            ) : (
+              <Text style={styles.greetingText}>{greeting}</Text>
+            )}
           </View>
 
           <HydrationTimerButton />
@@ -181,6 +222,13 @@ export default function HomeScreen() {
           style={styles.focusCard}
         >
           <View style={styles.decorCircle} />
+          <View style={styles.focusIconBadge}>
+            <MaterialCommunityIcons
+              name={visuals.home.focusIcon}
+              size={22}
+              color={colors.primary_fixed_variant}
+            />
+          </View>
           <Text style={styles.focusLabel}>FOCUS FOR TODAY</Text>
           <Text style={styles.focusTitle}>{progressMessage}</Text>
           <View style={styles.progressBarContainer}>
@@ -195,6 +243,13 @@ export default function HomeScreen() {
             style={styles.emptyState}
           >
             <Text style={styles.emptyEmoji}>🌱</Text>
+            <View style={styles.emptyIconWrap}>
+              <MaterialCommunityIcons
+                name={visuals.home.emptyIcon}
+                size={42}
+                color={colors.primary_fixed_variant}
+              />
+            </View>
             <Text style={styles.emptyTitle}>No reminders yet</Text>
             <Text style={styles.emptySubtitle}>
               Tap the Add tab to plant your first gentle reminder
@@ -250,7 +305,34 @@ export default function HomeScreen() {
           entering={FadeInDown.duration(500).delay(700)}
           style={styles.illustrationPlaceholder}
         >
-          <QuoteFooter scope="home-tab-footer" shift={1} />
+          {isGoldenTheme ? (
+            <LinearGradient
+              colors={['#FFE9A8', '#FFE3A5', '#FFD76A']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.nudgeCard}
+            >
+              <MaterialCommunityIcons
+                name="flower-pollen-outline"
+                size={54}
+                color={`${colors.primary}20`}
+                style={styles.nudgeArtLeft}
+              />
+              <MaterialCommunityIcons
+                name="flower-outline"
+                size={72}
+                color={`${colors.primary}28`}
+                style={styles.nudgeArtRight}
+              />
+              <Text style={styles.nudgeTitle}>The Gentle Nudge</Text>
+              <Text style={styles.nudgeText}>
+                It&apos;s a beautiful sunny moment, {userName ?? 'friend'}. Remember to take a
+                deep breath before your next reminder.
+              </Text>
+            </LinearGradient>
+          ) : (
+            <QuoteFooter scope="home-tab-footer" shift={1} />
+          )}
         </Animated.View>
       </ScrollView>
 
@@ -308,11 +390,28 @@ const createStyles = (colors: typeof Colors) =>
       backgroundColor: colors.primary_container,
       opacity: 0.2,
     },
+    backgroundIconTop: {
+      position: 'absolute',
+      top: 78,
+      right: -18,
+      opacity: 0.85,
+    },
+    backgroundIconBottom: {
+      position: 'absolute',
+      bottom: 110,
+      left: -24,
+      opacity: 0.7,
+    },
     greetingWrap: {
       flex: 1,
       justifyContent: 'center',
       paddingRight: Spacing.item,
       zIndex: 1,
+    },
+    greetingRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: Spacing.compact,
     },
     greetingText: {
       fontFamily: FontFamily.extraBold,
@@ -321,6 +420,9 @@ const createStyles = (colors: typeof Colors) =>
       color: colors.primary_fixed_variant,
       letterSpacing: 0.2,
       textAlign: 'left',
+    },
+    greetingSun: {
+      marginTop: 4,
     },
 
     // Focus Card
@@ -344,6 +446,17 @@ const createStyles = (colors: typeof Colors) =>
       borderRadius: 40,
       backgroundColor: colors.primary_container,
       opacity: 0.4,
+    },
+    focusIconBadge: {
+      position: 'absolute',
+      top: Spacing.generous,
+      right: Spacing.generous,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: `${colors.surface_container_lowest}D8`,
     },
     focusLabel: {
       fontFamily: FontFamily.semiBold,
@@ -376,8 +489,21 @@ const createStyles = (colors: typeof Colors) =>
       paddingHorizontal: Spacing.breathe,
     },
     emptyEmoji: {
-      fontSize: 56,
+      fontSize: 1,
+      lineHeight: 1,
+      opacity: 0,
+      height: 1,
+      marginBottom: 0,
+    },
+    emptyIconWrap: {
+      width: 92,
+      height: 92,
+      borderRadius: 46,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary_fixed,
       marginBottom: Spacing.generous,
+      ...Elevation.low,
     },
     emptyTitle: {
       fontFamily: FontFamily.bold,
@@ -416,5 +542,36 @@ const createStyles = (colors: typeof Colors) =>
     illustrationPlaceholder: {
       paddingVertical: Spacing.breathe,
       marginTop: Spacing.cozy,
+    },
+    nudgeCard: {
+      borderRadius: Radius.xl,
+      paddingHorizontal: Spacing.breathe,
+      paddingVertical: Spacing.breathe,
+      overflow: 'hidden',
+      ...Elevation.low,
+    },
+    nudgeArtLeft: {
+      position: 'absolute',
+      left: -14,
+      bottom: -8,
+    },
+    nudgeArtRight: {
+      position: 'absolute',
+      right: -12,
+      bottom: 10,
+    },
+    nudgeTitle: {
+      fontFamily: FontFamily.bold,
+      fontSize: 24,
+      lineHeight: 30,
+      color: colors.on_surface,
+      marginBottom: Spacing.compact,
+    },
+    nudgeText: {
+      maxWidth: '82%',
+      fontFamily: FontFamily.regular,
+      fontSize: 16,
+      lineHeight: 28,
+      color: colors.on_surface,
     },
   });

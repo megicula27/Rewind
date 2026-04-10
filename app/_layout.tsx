@@ -27,7 +27,6 @@ import {
 import 'react-native-reanimated';
 
 import { ThemeProvider, useTheme } from '@/src/theme/ThemeContext';
-import { Colors } from '@/src/theme/colors';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/src/db/database';
 import NamePrompt from '@/src/components/NamePrompt';
 import NotificationBootstrap from '@/src/components/NotificationBootstrap';
@@ -54,11 +53,11 @@ function AppContent() {
   }, [colors.primary_fixed]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.surface }]}>
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: Colors.surface },
+          contentStyle: { backgroundColor: colors.surface },
           animation: 'fade',
           animationDuration: 400,
         }}
@@ -123,6 +122,6 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'transparent',
   },
 });

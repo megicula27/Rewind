@@ -1,10 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityActionEvent,
   ActivityIndicator,
   Animated,
   Easing,
   Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,16 +17,18 @@ import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { calculatePoints } from '../db/completions';
-import { Colors } from '../theme/colors';
+import type { ThemeColors } from '../theme/colors';
 import { Elevation } from '../theme/elevation';
 import { Radius, Spacing, TapTargets } from '../theme/spacing';
 import { useTheme } from '../theme/ThemeContext';
 import { FontFamily } from '../theme/typography';
+import { getThemeVisuals } from '../theme/visuals';
 
-const DIAL_VALUES = Array.from({ length: 11 }, (_, index) => index);
 const RING_SIZE = 172;
 const RADIUS = 66;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+const SLIDER_SIDE_INSET = 14;
+const SLIDER_THUMB_SIZE = 28;
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 interface TaskCompletionSheetProps {
@@ -100,12 +102,15 @@ export default function TaskCompletionSheet({
   onPrimaryAction,
   onSecondaryAction,
 }: TaskCompletionSheetProps) {
-  const { colors } = useTheme();
+  const { colors, themeName } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = createStyles(colors, insets.top);
+  const visuals = getThemeVisuals(themeName);
+  const isGoldenTheme = themeName === 'golden_sun';
   const pointsEarned = calculatePoints(dialValue);
   const completionCopy = getCompletionCopy(dialValue);
   const progressRatio = dialValue / 10;
+  const [sliderMeasureWidth, setSliderMeasureWidth] = useState(0);
 
   const ringProgress = useRef(new Animated.Value(progressRatio)).current;
   const fillProgress = useRef(new Animated.Value(progressRatio)).current;
@@ -131,16 +136,48 @@ export default function TaskCompletionSheet({
     inputRange: [0, 1],
     outputRange: [CIRCUMFERENCE, 0],
   });
-  const sliderWidth = fillProgress.interpolate({
+  const sliderTrackWidth = Math.max(0, sliderMeasureWidth - SLIDER_SIDE_INSET * 2);
+  const sliderFillWidth = fillProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
+    outputRange: [0, sliderTrackWidth],
   });
+  const sliderThumbTranslate = fillProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, sliderTrackWidth],
+  });
+
+  const updateDialFromPosition = useCallback((locationX: number) => {
+    if (sliderTrackWidth <= 0) {
+      return;
+    }
+
+    const relativeX = Math.min(Math.max(locationX - SLIDER_SIDE_INSET, 0), sliderTrackWidth);
+    const nextValue = Math.round((relativeX / sliderTrackWidth) * 10);
+    if (nextValue !== dialValue) {
+      onChangeDial(nextValue);
+    }
+  }, [dialValue, onChangeDial, sliderTrackWidth]);
+
+  const handleSliderAccessibilityAction = (event: AccessibilityActionEvent) => {
+    if (event.nativeEvent.actionName === 'increment') {
+      onChangeDial(Math.min(10, dialValue + 1));
+      return;
+    }
+
+    if (event.nativeEvent.actionName === 'decrement') {
+      onChangeDial(Math.max(0, dialValue - 1));
+    }
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <LinearGradient
-          colors={[colors.surface, colors.surface_container_low, colors.tertiary]}
+          colors={
+            isGoldenTheme
+              ? [colors.surface, '#FFF5D4', colors.surface_container_low]
+              : [colors.surface, colors.surface_container_low, colors.tertiary]
+          }
           locations={[0, 0.78, 1]}
           style={StyleSheet.absoluteFill}
         />
@@ -156,7 +193,9 @@ export default function TaskCompletionSheet({
             >
               <MaterialCommunityIcons name="close" size={22} color={colors.primary_fixed_variant} />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Remind Me{'\n'}Gently</Text>
+            <Text style={styles.headerTitle}>
+              {isGoldenTheme ? 'Wonderfully Done!' : `Remind Me${'\n'}Gently`}
+            </Text>
           </View>
 
           <View style={styles.pointsBadge}>
@@ -166,33 +205,40 @@ export default function TaskCompletionSheet({
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <View style={styles.growthChip}>
-            <MaterialCommunityIcons name="sprout" size={18} color={colors.primary_fixed_variant} />
-            <Text style={styles.growthChipText}>Garden Grew!</Text>
-          </View>
+          {!isGoldenTheme ? (
+            <View style={styles.growthChip}>
+              <MaterialCommunityIcons
+                name={visuals.completion.chipIcon}
+                size={18}
+                color={colors.primary_fixed_variant}
+              />
+              <Text style={styles.growthChipText}>{visuals.completion.chipLabel}</Text>
+            </View>
+          ) : null}
 
           <View style={styles.heroCard}>
             <View style={styles.heroDecorationLeft} />
             <View style={styles.heroDecorationRight} />
             <MaterialCommunityIcons
-              name="star-four-points"
+              name={visuals.completion.sparkleTop}
               size={18}
               color={colors.primary}
               style={styles.sparkleTop}
             />
             <MaterialCommunityIcons
-              name="flower-poppy"
+              name={visuals.completion.sparkleBottom}
               size={14}
               color={colors.primary}
               style={styles.sparkleBottom}
             />
 
             <View style={styles.heroIconWrap}>
-              <View style={styles.heroMoodIconWrap}>
+              {isGoldenTheme ? <View style={styles.heroIconHalo} /> : null}
+              <View style={[styles.heroMoodIconWrap, isGoldenTheme && styles.heroMoodIconWrapGolden]}>
                 <MaterialCommunityIcons
                   name={completionCopy.moodIcon as any}
                   size={52}
-                  color={colors.primary_fixed_variant}
+                  color={isGoldenTheme ? colors.on_primary : colors.primary_fixed_variant}
                 />
               </View>
             </View>
@@ -201,13 +247,30 @@ export default function TaskCompletionSheet({
             <Text style={styles.reminderLabel}>{reminderName}</Text>
 
             <View style={styles.pointsPill}>
-              <MaterialCommunityIcons name="plus-circle" size={20} color={colors.on_primary} />
-              <Text style={styles.pointsPillText}>{formatDelta(pointsEarned)} Points</Text>
+              {isGoldenTheme ? (
+                <LinearGradient
+                  colors={['#FFD033', '#FDCB2D']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              ) : null}
+              <MaterialCommunityIcons
+                name={isGoldenTheme ? 'star-circle' : 'plus-circle'}
+                size={20}
+                color={isGoldenTheme ? colors.secondary : colors.on_primary}
+              />
+              <Text style={[styles.pointsPillText, isGoldenTheme && styles.pointsPillTextGolden]}>
+                {formatDelta(pointsEarned)} Points
+              </Text>
             </View>
+            {isGoldenTheme ? <Text style={styles.goldenCaption}>Every petal counts.</Text> : null}
           </View>
 
           <View style={styles.dialCard}>
-            <Text style={styles.sectionTitle}>How much did you do?</Text>
+            <Text style={styles.sectionTitle}>
+              {isGoldenTheme ? 'How much did you bloom today?' : 'How much did you do?'}
+            </Text>
 
             <View style={styles.dialArea}>
               <Svg width={RING_SIZE} height={RING_SIZE}>
@@ -223,7 +286,7 @@ export default function TaskCompletionSheet({
                   cx={RING_SIZE / 2}
                   cy={RING_SIZE / 2}
                   r={RADIUS}
-                  stroke={colors.primary}
+                  stroke={isGoldenTheme ? colors.secondary_container : colors.primary}
                   strokeWidth={12}
                   fill="none"
                   strokeLinecap="round"
@@ -246,59 +309,79 @@ export default function TaskCompletionSheet({
                   {dialValue}
                   <Text style={styles.dialValueMax}>/10</Text>
                 </Text>
-                <Text style={styles.moodLabel}>{completionCopy.moodLabel}</Text>
               </View>
             </View>
+            <Text style={styles.moodLabel}>{completionCopy.moodLabel}</Text>
 
             <View style={styles.sliderWrap}>
-              <View style={styles.sliderTrack} />
-              <Animated.View style={[styles.sliderFill, { width: sliderWidth }]} />
-              <View style={styles.valueRow}>
-                {DIAL_VALUES.map((value) => {
-                  const active = value <= dialValue;
-                  const selected = value === dialValue;
-
-                  return (
-                    <Pressable
-                      key={value}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Set completion score to ${value}`}
-                      onPress={() => onChangeDial(value)}
-                      style={[
-                        styles.valueDot,
-                        active && styles.valueDotActive,
-                        selected && styles.valueDotSelected,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.valueDotText,
-                          active && styles.valueDotTextActive,
-                        ]}
-                      >
-                        {value}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+              <View
+                accessible
+                accessibilityRole="adjustable"
+                accessibilityLabel={`Completion score ${dialValue} out of 10`}
+                accessibilityActions={[
+                  { name: 'increment', label: 'Increase completion score' },
+                  { name: 'decrement', label: 'Decrease completion score' },
+                ]}
+                onAccessibilityAction={handleSliderAccessibilityAction}
+                onLayout={(event) => setSliderMeasureWidth(event.nativeEvent.layout.width)}
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => true}
+                onResponderGrant={(event) => updateDialFromPosition(event.nativeEvent.locationX)}
+                onResponderMove={(event) => updateDialFromPosition(event.nativeEvent.locationX)}
+                  style={styles.sliderTouchArea}
+              >
+                <View style={styles.sliderTrack} />
+                <Animated.View style={[styles.sliderFill, { width: sliderFillWidth }]}>
+                  <LinearGradient
+                    colors={
+                      isGoldenTheme
+                        ? [colors.secondary, '#E0BB00', colors.secondary_container]
+                        : [colors.primary, colors.primary_fixed_variant]
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </Animated.View>
+                <Animated.View
+                  style={[
+                    styles.sliderThumb,
+                    { transform: [{ translateX: sliderThumbTranslate }] },
+                  ]}
+                />
               </View>
+              <Text style={styles.sliderCaption}>Slide gently to match what you got done.</Text>
+              {isGoldenTheme ? (
+                <View style={styles.sliderLegend}>
+                  <Text style={styles.sliderLegendText}>Resting</Text>
+                  <Text style={styles.sliderLegendText}>Full Bloom</Text>
+                </View>
+              ) : null}
             </View>
 
-            <Text style={styles.dialQuote}>"{getReflectionLine(dialValue)}"</Text>
+            <Text style={styles.dialQuote}>{'"'}{getReflectionLine(dialValue)}{'"'}</Text>
           </View>
 
           <View style={styles.reflectionCard}>
-            <Text style={styles.reflectionLabel}>Today's Reflection</Text>
+            <Text style={styles.reflectionLabel}>Today&apos;s Reflection</Text>
             <Text style={styles.reflectionTitle}>Small steps are still steps forward.</Text>
             <LinearGradient
-              colors={[colors.primary_container, colors.secondary_container]}
+              colors={
+                isGoldenTheme
+                  ? ['#FFF3CC', '#FFDFA7']
+                  : [colors.primary_container, colors.secondary_container]
+              }
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.reflectionArt}
             >
-              <MaterialCommunityIcons name="leaf" size={42} color={colors.primary_fixed_variant} />
               <MaterialCommunityIcons
-                name="heart"
+                name={visuals.completion.reflectionPrimary}
+                size={42}
+                color={colors.primary_fixed_variant}
+              />
+              <MaterialCommunityIcons
+                name={visuals.completion.reflectionSecondary}
                 size={20}
                 color={colors.primary_fixed_variant}
                 style={styles.artHeart}
@@ -315,6 +398,15 @@ export default function TaskCompletionSheet({
           >
             {saving ? (
               <ActivityIndicator color={colors.on_primary} />
+            ) : isGoldenTheme ? (
+              <LinearGradient
+                colors={[colors.primary, '#E3D7B6']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.primaryButtonGradient}
+              >
+                <Text style={styles.primaryButtonText}>Tend more tasks</Text>
+              </LinearGradient>
             ) : (
               <Text style={styles.primaryButtonText}>Save progress</Text>
             )}
@@ -327,7 +419,7 @@ export default function TaskCompletionSheet({
             onPress={onSecondaryAction}
             style={styles.secondaryButton}
           >
-            <Text style={styles.secondaryButtonText}>Back for now</Text>
+            <Text style={styles.secondaryButtonText}>{isGoldenTheme ? 'Rest for now' : 'Back for now'}</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -335,7 +427,7 @@ export default function TaskCompletionSheet({
   );
 }
 
-const createStyles = (colors: typeof Colors, topInset: number) =>
+const createStyles = (colors: ThemeColors, topInset: number) =>
   StyleSheet.create({
     overlay: {
       flex: 1,
@@ -459,11 +551,25 @@ const createStyles = (colors: typeof Colors, topInset: number) =>
       backgroundColor: colors.primary_container,
       marginBottom: Spacing.cozy,
     },
+    heroIconHalo: {
+      position: 'absolute',
+      width: 116,
+      height: 116,
+      borderRadius: 58,
+      borderWidth: 4,
+      borderColor: 'rgba(144, 72, 0, 0.15)',
+    },
     heroMoodIconWrap: {
       width: 56,
       height: 56,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    heroMoodIconWrapGolden: {
+      width: 82,
+      height: 82,
+      borderRadius: 41,
+      backgroundColor: colors.primary,
     },
     heroTitle: {
       minHeight: 68,
@@ -498,12 +604,23 @@ const createStyles = (colors: typeof Colors, topInset: number) =>
       paddingVertical: Spacing.cozy,
       borderRadius: Radius.full,
       backgroundColor: colors.primary,
+      overflow: 'hidden',
       ...Elevation.medium,
     },
     pointsPillText: {
       fontFamily: FontFamily.bold,
       fontSize: 24,
       color: colors.on_primary,
+    },
+    pointsPillTextGolden: {
+      color: colors.secondary,
+    },
+    goldenCaption: {
+      marginTop: Spacing.cozy,
+      fontFamily: FontFamily.bold,
+      fontSize: 16,
+      color: colors.primary,
+      textAlign: 'center',
     },
     dialCard: {
       paddingHorizontal: Spacing.generous,
@@ -523,12 +640,13 @@ const createStyles = (colors: typeof Colors, topInset: number) =>
     dialArea: {
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: Spacing.generous,
+      marginBottom: Spacing.compact,
     },
     dialCenter: {
       position: 'absolute',
       alignItems: 'center',
       justifyContent: 'center',
+      transform: [{ translateY: -4 }],
     },
     dialMoodIconWrap: {
       width: 42,
@@ -548,63 +666,69 @@ const createStyles = (colors: typeof Colors, topInset: number) =>
       color: colors.on_surface_variant,
     },
     moodLabel: {
-      minHeight: 18,
+      minHeight: 20,
       fontFamily: FontFamily.medium,
       fontSize: 14,
       color: colors.on_surface_variant,
-      marginTop: Spacing.hair,
+      marginBottom: Spacing.generous,
+      textAlign: 'center',
     },
     sliderWrap: {
       marginBottom: Spacing.cozy,
       position: 'relative',
       justifyContent: 'center',
     },
+    sliderTouchArea: {
+      height: 38,
+      justifyContent: 'center',
+      marginBottom: Spacing.compact,
+    },
     sliderTrack: {
       position: 'absolute',
-      left: 14,
-      right: 14,
+      left: SLIDER_SIDE_INSET,
+      right: SLIDER_SIDE_INSET,
       height: 6,
       borderRadius: Radius.full,
       backgroundColor: colors.surface_container_highest,
     },
     sliderFill: {
       position: 'absolute',
-      left: 14,
+      left: SLIDER_SIDE_INSET,
       height: 6,
       borderRadius: Radius.full,
-      backgroundColor: colors.primary,
+      overflow: 'hidden',
     },
-    valueRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    valueDot: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
+    sliderThumb: {
+      position: 'absolute',
+      left: SLIDER_SIDE_INSET - SLIDER_THUMB_SIZE / 2,
+      width: SLIDER_THUMB_SIZE,
+      height: SLIDER_THUMB_SIZE,
+      borderRadius: SLIDER_THUMB_SIZE / 2,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.surface_container_highest,
-      borderWidth: 2,
-      borderColor: colors.surface_container_highest,
-    },
-    valueDotActive: {
-      backgroundColor: colors.primary_container,
-      borderColor: colors.primary_container,
-    },
-    valueDotSelected: {
       backgroundColor: colors.surface_container_lowest,
       borderColor: colors.primary,
-      transform: [{ scale: 1.08 }],
+      borderWidth: 3,
+      ...Elevation.low,
     },
-    valueDotText: {
-      fontFamily: FontFamily.bold,
-      fontSize: 11,
+    sliderCaption: {
+      fontFamily: FontFamily.medium,
+      fontSize: 13,
+      lineHeight: 18,
       color: colors.on_surface_variant,
+      textAlign: 'center',
+      opacity: 0.82,
     },
-    valueDotTextActive: {
-      color: colors.primary_fixed_variant,
+    sliderLegend: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: Spacing.compact,
+      paddingHorizontal: SLIDER_SIDE_INSET,
+    },
+    sliderLegendText: {
+      fontFamily: FontFamily.medium,
+      fontSize: 15,
+      color: colors.on_surface_variant,
     },
     dialQuote: {
       fontFamily: FontFamily.medium,
@@ -652,7 +776,14 @@ const createStyles = (colors: typeof Colors, topInset: number) =>
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.primary,
+      overflow: 'hidden',
       ...Elevation.medium,
+    },
+    primaryButtonGradient: {
+      width: '100%',
+      minHeight: TapTargets.primaryButton,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     primaryButtonText: {
       fontFamily: FontFamily.bold,
@@ -674,3 +805,4 @@ const createStyles = (colors: typeof Colors, topInset: number) =>
       color: colors.primary_fixed_variant,
     },
   });
+

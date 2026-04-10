@@ -3,7 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { getCompletionsForWeek } from '../db/completions';
-import { getPoints } from '../db/points';
+import { getPoints, updatePoints } from '../db/points';
 import { formatDateKey, type CompletionLog, type Points } from '../db/types';
 
 export interface WeekDaySummary {
@@ -92,6 +92,12 @@ export function usePoints() {
     }
   }, [db]);
 
+  const spendPoints = useCallback(async (amount: number) => {
+    const nextTotal = await updatePoints(db, -Math.abs(amount));
+    await refresh();
+    return nextTotal;
+  }, [db, refresh]);
+
   useFocusEffect(
     useCallback(() => {
       refresh();
@@ -102,6 +108,7 @@ export function usePoints() {
     loading,
     points,
     refresh,
+    spendPoints,
     weekSummary,
   };
 }

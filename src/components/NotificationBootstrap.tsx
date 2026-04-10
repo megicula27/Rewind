@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { getReminders } from '../db/reminders';
@@ -41,8 +41,15 @@ export default function NotificationBootstrap() {
 
     void bootstrapNotifications();
 
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void bootstrapNotifications();
+      }
+    });
+
     return () => {
       isCancelled = true;
+      subscription.remove();
     };
   }, [db, notificationsEnabled, themeName, userName]);
 

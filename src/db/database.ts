@@ -7,7 +7,7 @@
 
 import { type SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 
 export const DATABASE_NAME = 'rewind.db';
 
@@ -42,6 +42,8 @@ export async function ensureDbSchema(db: SQLiteDatabase) {
       day_of_week   INTEGER,
       day_of_month  INTEGER,
       once_date     TEXT,
+      interval_value INTEGER,
+      interval_unit  TEXT,
       sound_id      INTEGER,
       is_active     INTEGER NOT NULL DEFAULT 1,
       created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -105,6 +107,12 @@ export async function ensureDbSchema(db: SQLiteDatabase) {
   }
   if (!reminderColumns.has('once_date')) {
     alterStatements.push(`ALTER TABLE reminders ADD COLUMN once_date TEXT;`);
+  }
+  if (!reminderColumns.has('interval_value')) {
+    alterStatements.push(`ALTER TABLE reminders ADD COLUMN interval_value INTEGER;`);
+  }
+  if (!reminderColumns.has('interval_unit')) {
+    alterStatements.push(`ALTER TABLE reminders ADD COLUMN interval_unit TEXT;`);
   }
   if (!reminderColumns.has('sound_id')) {
     alterStatements.push(`ALTER TABLE reminders ADD COLUMN sound_id INTEGER;`);

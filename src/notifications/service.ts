@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 import type { Reminder, ReminderType, Sound } from '../db/types';
-import { CherryBlossom } from '../theme/colors';
+import { AquaticSerenity, CherryBlossom, GoldenSun, JungleDeep, type ThemeName } from '../theme/colors';
 import {
   DEFAULT_HYDRATION_SOUND_FILE,
   DEFAULT_NOTIFICATION_SOUND_FILE,
@@ -21,8 +21,6 @@ import {
   setNotificationChannelAsync,
   setNotificationHandler,
 } from './expoNotifications';
-
-type SupportedThemeName = 'cherry_blossom';
 
 type NotificationTheme = {
   channelId: string;
@@ -44,15 +42,35 @@ type MessageTokens = {
 
 const REMINDER_PREFIX = 'rewind-reminder';
 const HYDRATION_PREFIX = 'rewind-hydration';
-const UPCOMING_REMINDER_COUNT = 12;
-const ANDROID_CHANNEL_VERSION = 'v2';
+const ANDROID_CHANNEL_VERSION = 'v3';
 
-const NOTIFICATION_THEMES: Record<SupportedThemeName, NotificationTheme> = {
+const NOTIFICATION_THEMES: Record<ThemeName, NotificationTheme> = {
   cherry_blossom: {
     channelId: 'rewind-sakura',
     channelName: 'Rewind Sakura Reminders',
     accentColor: CherryBlossom.primary,
     subtitle: 'Sakura reminder',
+    defaultSoundFile: DEFAULT_NOTIFICATION_SOUND_FILE,
+  },
+  aquatic_serenity: {
+    channelId: 'rewind-aquatic',
+    channelName: 'Rewind Aquatic Reminders',
+    accentColor: AquaticSerenity.primary,
+    subtitle: 'Aquatic reminder',
+    defaultSoundFile: DEFAULT_NOTIFICATION_SOUND_FILE,
+  },
+  jungle_deep: {
+    channelId: 'rewind-jungle',
+    channelName: 'Rewind Jungle Reminders',
+    accentColor: JungleDeep.primary,
+    subtitle: 'Jungle reminder',
+    defaultSoundFile: DEFAULT_NOTIFICATION_SOUND_FILE,
+  },
+  golden_sun: {
+    channelId: 'rewind-golden',
+    channelName: 'Rewind Golden Reminders',
+    accentColor: GoldenSun.primary,
+    subtitle: 'Golden reminder',
     defaultSoundFile: DEFAULT_NOTIFICATION_SOUND_FILE,
   },
 };
@@ -135,7 +153,7 @@ function isNotificationPlatform() {
 }
 
 function getNotificationTheme(themeName: string): NotificationTheme {
-  return NOTIFICATION_THEMES[(themeName as SupportedThemeName) ?? 'cherry_blossom'] ?? NOTIFICATION_THEMES.cherry_blossom;
+  return NOTIFICATION_THEMES[(themeName as ThemeName) ?? 'cherry_blossom'] ?? NOTIFICATION_THEMES.cherry_blossom;
 }
 
 function hashSeed(value: string) {
@@ -274,7 +292,20 @@ function lastDayOfMonth(year: number, monthIndex: number) {
   return new Date(year, monthIndex + 1, 0).getDate();
 }
 
-function buildUpcomingReminderDates(reminder: Reminder, now = new Date(), limit = UPCOMING_REMINDER_COUNT) {
+function buildUpcomingReminderDates(reminder: Reminder, now = new Date(), limit?: number) {
+  let resolvedLimit = limit ?? 12;
+  if (reminder.frequency === 'daily') {
+    resolvedLimit = 90;
+  } else if (reminder.frequency === 'weekly') {
+    resolvedLimit = 52;
+  } else if (reminder.frequency === 'monthly') {
+    resolvedLimit = 24;
+  } else if (reminder.frequency === 'custom_interval' && reminder.interval_unit === 'day') {
+    resolvedLimit = 90;
+  } else if (reminder.frequency === 'custom_interval' && reminder.interval_unit === 'month') {
+    resolvedLimit = 24;
+  }
+
   if (reminder.is_active !== 1) {
     return [];
   }
@@ -301,7 +332,7 @@ function buildUpcomingReminderDates(reminder: Reminder, now = new Date(), limit 
     let year = now.getFullYear();
     let monthIndex = now.getMonth();
 
-    while (dates.length < limit) {
+    while (dates.length < resolvedLimit) {
       const day = Math.min(reminder.day_of_month, lastDayOfMonth(year, monthIndex));
       const candidate = new Date(year, monthIndex, day, reminder.time_hour, reminder.time_minute, 0, 0);
       if (candidate.getTime() > now.getTime()) {
@@ -318,6 +349,51 @@ function buildUpcomingReminderDates(reminder: Reminder, now = new Date(), limit 
     return dates;
   }
 
+  if (reminder.frequency === 'custom_interval') {
+    if (!reminder.interval_value || !reminder.interval_unit) {
+      return [];
+    }
+
+    const start = new Date(reminder.created_at.replace(' ', 'T'));
+
+    if (reminder.interval_unit === 'day') {
+      const dates: Date[] = [];
+      const cursor = new Date(start);
+      cursor.setHours(reminder.time_hour, reminder.time_minute, 0, 0);
+
+      while (dates.length < resolvedLimit) {
+        if (cursor.getTime() > now.getTime()) {
+          dates.push(new Date(cursor));
+        }
+
+        cursor.setDate(cursor.getDate() + reminder.interval_value);
+      }
+
+      return dates;
+    }
+
+    const intervalDay = reminder.day_of_month ?? start.getDate();
+    const dates: Date[] = [];
+    let year = start.getFullYear();
+    let monthIndex = start.getMonth();
+
+    while (dates.length < resolvedLimit) {
+      const day = Math.min(intervalDay, lastDayOfMonth(year, monthIndex));
+      const candidate = new Date(year, monthIndex, day, reminder.time_hour, reminder.time_minute, 0, 0);
+      if (candidate.getTime() > now.getTime()) {
+        dates.push(candidate);
+      }
+
+      monthIndex += reminder.interval_value;
+      while (monthIndex > 11) {
+        monthIndex -= 12;
+        year += 1;
+      }
+    }
+
+    return dates;
+  }
+
   if (reminder.frequency === 'weekly' && reminder.day_of_week == null) {
     return [];
   }
@@ -326,7 +402,7 @@ function buildUpcomingReminderDates(reminder: Reminder, now = new Date(), limit 
   const cursor = new Date(now);
   cursor.setHours(0, 0, 0, 0);
 
-  while (dates.length < limit) {
+  while (dates.length < resolvedLimit) {
     const candidate = buildNotificationDate(cursor, reminder.time_hour, reminder.time_minute);
     const dueToday =
       reminder.frequency === 'daily' ||
@@ -371,7 +447,11 @@ function buildChannelName(themeName: string, soundFile: string) {
   return `${theme.channelName} · ${label}`;
 }
 
-async function configureNotificationChannelsAsync(themeName: string, sounds: Sound[] = []) {
+async function configureNotificationChannelsAsync(
+  themeName: string,
+  sounds: Sound[] = [],
+  extraSoundFiles: string[] = []
+) {
   if (Platform.OS !== 'android') {
     return;
   }
@@ -381,6 +461,10 @@ async function configureNotificationChannelsAsync(themeName: string, sounds: Sou
 
   for (const sound of sounds) {
     soundFiles.add(getNotificationSoundFile(sound));
+  }
+
+  for (const soundFile of extraSoundFiles) {
+    soundFiles.add(soundFile);
   }
 
   await Promise.all(
@@ -400,7 +484,11 @@ async function configureNotificationChannelsAsync(themeName: string, sounds: Sou
   );
 }
 
-export async function initializeNotificationsAsync(themeName: string, sounds: Sound[] = []) {
+export async function initializeNotificationsAsync(
+  themeName: string,
+  sounds: Sound[] = [],
+  extraSoundFiles: string[] = []
+) {
   if (!isNotificationPlatform()) {
     return false;
   }
@@ -417,7 +505,7 @@ export async function initializeNotificationsAsync(themeName: string, sounds: So
     hasConfiguredNotifications = true;
   }
 
-  await configureNotificationChannelsAsync(themeName, sounds);
+  await configureNotificationChannelsAsync(themeName, sounds, extraSoundFiles);
 
   const permissions = await getPermissionsAsync();
   if (permissions.granted) {
@@ -471,16 +559,17 @@ export async function cancelReminderNotificationsAsync() {
 export async function scheduleHydrationNotificationAsync(
   seconds: number,
   context: NotificationContext,
-  repeats = true
+  repeats = true,
+  soundFileOverride?: string
 ) {
   if (!isNotificationPlatform()) {
     return;
   }
 
   const theme = getNotificationTheme(context.themeName);
-  const soundFile = DEFAULT_HYDRATION_SOUND_FILE || theme.defaultSoundFile;
+  const soundFile = soundFileOverride || DEFAULT_HYDRATION_SOUND_FILE || theme.defaultSoundFile;
   const canRepeat = !(Platform.OS === 'ios' && seconds < 60) && repeats;
-  const hasPermission = await initializeNotificationsAsync(context.themeName);
+  const hasPermission = await initializeNotificationsAsync(context.themeName, [], [soundFile]);
   if (!hasPermission) {
     return;
   }

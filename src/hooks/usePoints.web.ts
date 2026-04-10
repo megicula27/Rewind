@@ -3,7 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import type { CompletionLog, Points } from '../db/types';
 import { formatDateKey } from '../db/types';
-import { readJson } from '../web/storage';
+import { readJson, writeJson } from '../web/storage';
 
 export interface WeekDaySummary {
   key: string;
@@ -91,6 +91,15 @@ export function usePoints() {
     }
   }, []);
 
+  const spendPoints = useCallback(async (amount: number) => {
+    const snapshot = readJson<Points>(POINTS_KEY, EMPTY_POINTS);
+    writeJson(POINTS_KEY, {
+      ...snapshot,
+      total_points: Math.max(0, snapshot.total_points - Math.abs(amount)),
+    });
+    await refresh();
+  }, [refresh]);
+
   useFocusEffect(
     useCallback(() => {
       refresh();
@@ -101,6 +110,7 @@ export function usePoints() {
     loading,
     points,
     refresh,
+    spendPoints,
     weekSummary,
   };
 }

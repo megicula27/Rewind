@@ -14,8 +14,9 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import { Colors } from '../theme/colors';
-import { Radius, Spacing } from '../theme/spacing';
+import type { ThemeColors } from '../theme/colors';
+import { Radius } from '../theme/spacing';
+import { useTheme } from '../theme/ThemeContext';
 
 interface ProgressBarProps {
   /** Value between 0 and 1 */
@@ -24,10 +25,14 @@ interface ProgressBarProps {
   height?: number;
 }
 
-const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
-
 export default function ProgressBar({ progress, height = 12 }: ProgressBarProps) {
+  const { colors, themeName } = useTheme();
   const animatedWidth = useSharedValue(0);
+  const styles = createStyles(colors);
+  const gradientColors =
+    themeName === 'golden_sun'
+      ? ([colors.primary, '#F68A2F', colors.secondary_container] as const)
+      : ([colors.primary, colors.primary_fixed_variant] as const);
 
   useEffect(() => {
     // Animate to new progress with a gentle ease-in-out (300–500ms per spec)
@@ -35,7 +40,7 @@ export default function ProgressBar({ progress, height = 12 }: ProgressBarProps)
       duration: 500,
       easing: Easing.bezier(0.4, 0, 0.2, 1),
     });
-  }, [progress]);
+  }, [animatedWidth, progress]);
 
   const fillStyle = useAnimatedStyle(() => {
     return {
@@ -47,7 +52,7 @@ export default function ProgressBar({ progress, height = 12 }: ProgressBarProps)
     <View style={[styles.track, { height }]}>
       <Animated.View style={[styles.fillContainer, { height }, fillStyle]}>
         <LinearGradient
-          colors={[Colors.primary, Colors.primary_fixed_variant]}
+          colors={gradientColors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={[styles.fill, { height }]}
@@ -57,19 +62,21 @@ export default function ProgressBar({ progress, height = 12 }: ProgressBarProps)
   );
 }
 
-const styles = StyleSheet.create({
-  track: {
-    width: '100%',
-    backgroundColor: Colors.surface_container_high,
-    borderRadius: Radius.full,
-    overflow: 'hidden',
-  },
-  fillContainer: {
-    borderRadius: Radius.full,
-    overflow: 'hidden',
-  },
-  fill: {
-    width: '100%',
-    borderRadius: Radius.full,
-  },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    track: {
+      width: '100%',
+      backgroundColor: colors.surface_container_high,
+      borderRadius: Radius.full,
+      overflow: 'hidden',
+    },
+    fillContainer: {
+      borderRadius: Radius.full,
+      overflow: 'hidden',
+    },
+    fill: {
+      width: '100%',
+      borderRadius: Radius.full,
+    },
+  });
+

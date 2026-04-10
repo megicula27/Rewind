@@ -20,28 +20,29 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   Easing,
-  FadeIn,
-  FadeOut,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors } from '../theme/colors';
-import { FontFamily, Typography } from '../theme/typography';
+import type { ThemeColors } from '../theme/colors';
+import { FontFamily } from '../theme/typography';
 import { Spacing, Radius, TapTargets } from '../theme/spacing';
+import { useTheme } from '../theme/ThemeContext';
 
 interface NamePromptProps {
   onSubmit: (name: string) => void;
 }
 
 export default function NamePrompt({ onSubmit }: NamePromptProps) {
+  const { colors } = useTheme();
   const [name, setName] = useState('');
   const opacity = useSharedValue(0);
+  const styles = createStyles(colors);
 
   useEffect(() => {
     opacity.value = withTiming(1, { 
       duration: 600, 
       easing: Easing.bezier(0.4, 0, 0.2, 1) 
     });
-  }, []);
+  }, [opacity]);
 
   const handleSubmit = () => {
     if (name.trim().length > 0) {
@@ -61,7 +62,7 @@ export default function NamePrompt({ onSubmit }: NamePromptProps) {
   return (
     <Animated.View style={[styles.container, containerStyle]}>
       <LinearGradient
-        colors={[Colors.surface, Colors.tertiary, Colors.primary_container]}
+        colors={[colors.surface, colors.tertiary, colors.primary_container]}
         locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFill}
       />
@@ -80,7 +81,7 @@ export default function NamePrompt({ onSubmit }: NamePromptProps) {
           <TextInput
             style={styles.input}
             placeholder="Your name"
-            placeholderTextColor={Colors.outline}
+            placeholderTextColor={colors.outline}
             value={name}
             onChangeText={setName}
             autoFocus
@@ -102,12 +103,12 @@ export default function NamePrompt({ onSubmit }: NamePromptProps) {
             accessibilityLabel="Continue"
           >
             <LinearGradient
-              colors={[Colors.primary, Colors.primary_fixed_variant]}
+              colors={[colors.primary, colors.primary_fixed_variant]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.buttonGradient}
             >
-              <Text style={styles.buttonText}>Let's bloom together 🌷</Text>
+              <Text style={styles.buttonText}>Let&apos;s bloom together 🌷</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -116,70 +117,72 @@ export default function NamePrompt({ onSubmit }: NamePromptProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 100,
-  },
-  keyboardView: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  content: {
-    paddingHorizontal: Spacing.breathe,
-    alignItems: 'center',
-  },
-  blossom: {
-    fontSize: 64,
-    marginBottom: Spacing.generous,
-  },
-  title: {
-    fontFamily: FontFamily.bold,
-    fontSize: 32,
-    color: Colors.on_surface,
-    textAlign: 'center',
-    marginBottom: Spacing.compact,
-    letterSpacing: 0.3,
-  },
-  subtitle: {
-    fontFamily: FontFamily.regular,
-    fontSize: 18,
-    color: Colors.on_surface_variant,
-    textAlign: 'center',
-    lineHeight: 26,
-    marginBottom: Spacing.breathe,
-  },
-  input: {
-    width: '100%',
-    height: TapTargets.minHeight,
-    backgroundColor: Colors.surface_container_highest,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.generous,
-    fontFamily: FontFamily.medium,
-    fontSize: 18,
-    color: Colors.on_surface,
-    marginBottom: Spacing.generous,
-    textAlign: 'center',
-  },
-  button: {
-    width: '100%',
-    borderRadius: Radius.full,
-    overflow: 'hidden',
-    ...({ elevation: 2 }),
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonGradient: {
-    height: TapTargets.primaryButton,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.breathe,
-  },
-  buttonText: {
-    fontFamily: FontFamily.bold,
-    fontSize: 18,
-    color: Colors.on_primary,
-    letterSpacing: 0.2,
-  },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 100,
+    },
+    keyboardView: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    content: {
+      paddingHorizontal: Spacing.breathe,
+      alignItems: 'center',
+    },
+    blossom: {
+      fontSize: 64,
+      marginBottom: Spacing.generous,
+    },
+    title: {
+      fontFamily: FontFamily.bold,
+      fontSize: 32,
+      color: colors.on_surface,
+      textAlign: 'center',
+      marginBottom: Spacing.compact,
+      letterSpacing: 0.3,
+    },
+    subtitle: {
+      fontFamily: FontFamily.regular,
+      fontSize: 18,
+      color: colors.on_surface_variant,
+      textAlign: 'center',
+      lineHeight: 26,
+      marginBottom: Spacing.breathe,
+    },
+    input: {
+      width: '100%',
+      height: TapTargets.minHeight,
+      backgroundColor: colors.surface_container_highest,
+      borderRadius: Radius.lg,
+      paddingHorizontal: Spacing.generous,
+      fontFamily: FontFamily.medium,
+      fontSize: 18,
+      color: colors.on_surface,
+      marginBottom: Spacing.generous,
+      textAlign: 'center',
+    },
+    button: {
+      width: '100%',
+      borderRadius: Radius.full,
+      overflow: 'hidden',
+      ...({ elevation: 2 }),
+    },
+    buttonDisabled: {
+      opacity: 0.5,
+    },
+    buttonGradient: {
+      height: TapTargets.primaryButton,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: Spacing.breathe,
+    },
+    buttonText: {
+      fontFamily: FontFamily.bold,
+      fontSize: 18,
+      color: colors.on_primary,
+      letterSpacing: 0.2,
+    },
+  });
+

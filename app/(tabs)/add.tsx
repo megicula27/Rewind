@@ -38,7 +38,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 
-import { Colors } from '@/src/theme/colors';
+import type { ThemeColors } from '@/src/theme/colors';
 import { FontFamily } from '@/src/theme/typography';
 import { Spacing, Radius, TapTargets } from '@/src/theme/spacing';
 import { Elevation } from '@/src/theme/elevation';
@@ -46,7 +46,7 @@ import { useReminders } from '@/src/hooks/useReminders';
 import { useSounds } from '@/src/hooks/useSounds';
 import SoundStudioSheet from '@/src/components/SoundStudioSheet';
 import QuoteFooter from '@/src/components/QuoteFooter';
-import type { ReminderType, ReminderFrequency, Sound } from '@/src/db/types';
+import type { ReminderType, ReminderFrequency, ReminderIntervalUnit, Sound } from '@/src/db/types';
 import { formatDateKey, formatReminderDate } from '@/src/db/types';
 import {
   getSoundVisual,
@@ -54,6 +54,8 @@ import {
   resolveSoundPlaybackSource,
 } from '@/src/sounds/catalog';
 import { copyClipToSoundLibraryAsync } from '@/src/sounds/storage';
+import { useTheme } from '@/src/theme/ThemeContext';
+import { getThemeVisuals } from '@/src/theme/visuals';
 
 // ── Type config ─────────────────────────────────────
 const TYPES: { key: ReminderType; label: string; icon: string; materialIcon: string }[] = [
@@ -67,6 +69,7 @@ const FREQUENCIES: { key: ReminderFrequency; label: string }[] = [
   { key: 'daily',   label: 'Daily' },
   { key: 'weekly',  label: 'Weekly' },
   { key: 'monthly', label: 'Monthly' },
+  { key: 'custom_interval', label: 'Custom' },
   { key: 'once',    label: 'Once' },
 ];
 
@@ -79,6 +82,10 @@ const DAYS_OF_WEEK = [
   { key: 5, label: 'F', full: 'Friday' },
   { key: 6, label: 'S', full: 'Saturday' },
 ];
+
+const TIME_HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
+const TIME_MINUTES = Array.from({ length: 60 }, (_, index) => index);
+const TIME_PERIODS = ['AM', 'PM'] as const;
 
 function formatDurationLabel(durationMs: number | null) {
   if (!durationMs || durationMs <= 0) {
@@ -96,20 +103,35 @@ function createCurrentReminderTime() {
   return new Date(2024, 0, 1, now.getHours(), now.getMinutes(), 0, 0);
 }
 
+function getDisplayHour(date: Date) {
+  return date.getHours() % 12 || 12;
+}
+
+function getDisplayPeriod(date: Date) {
+  return date.getHours() >= 12 ? 'PM' : 'AM';
+}
+
 export default function AddScreen() {
   const insets = useSafeAreaInsets();
+  const { colors, themeName } = useTheme();
   const { addReminder } = useReminders();
   const { sounds, loading: soundsLoading, createCustomSound, removeCustomSound } = useSounds();
   const previewPlayer = useAudioPlayer(null);
   const previewStatus = useAudioPlayerStatus(previewPlayer);
+  const styles = createStyles(colors);
+  const visuals = getThemeVisuals(themeName);
+  const isGoldenTheme = themeName === 'golden_sun';
 
   // ── Form state ─────────────────────────────
   const [selectedType, setSelectedType] = useState<ReminderType>('food');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [time, setTime] = useState(() => createCurrentReminderTime());
+  const [pickerTime, setPickerTime] = useState(() => createCurrentReminderTime());
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [frequency, setFrequency] = useState<ReminderFrequency>('daily');
+  const [intervalValue, setIntervalValue] = useState(2);
+  const [intervalUnit, setIntervalUnit] = useState<ReminderIntervalUnit>('day');
   const [dayOfWeek, setDayOfWeek] = useState(1); // Monday
   const [dayOfMonth, setDayOfMonth] = useState(1);
   const [onceDate, setOnceDate] = useState(new Date());
@@ -123,6 +145,7 @@ export default function AddScreen() {
   const isCustom = selectedType === 'custom';
   const typeConfig = TYPES.find(t => t.key === selectedType)!;
   const selectedSoundRecord = sounds.find((sound) => sound.id === selectedSound) ?? sounds[0] ?? null;
+  const displayedTime = showTimePicker ? pickerTime : time;
 
   useEffect(() => {
     if (!selectedSound && sounds.length > 0) {
@@ -141,16 +164,51 @@ export default function AddScreen() {
     switch (type) {
       case 'medicine': return 'Take Medicine';
       case 'food': return 'Meal Time';
-      case 'water': return 'Exercise';
+      case 'water': return 'Drink Water';
       default: return '';
     }
   };
 
-  const handleTimeChange = (_: any, selectedDate?: Date) => {
-    setShowTimePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setTime(selectedDate);
-    }
+  const setPickerHour = (hour12: number) => {
+    setPickerTime((current) => {
+      const next = new Date(current);
+      const isPm = next.getHours() >= 12;
+      const normalizedHour = hour12 % 12;
+      next.setHours((isPm ? 12 : 0) + normalizedHour, next.getMinutes(), 0, 0);
+      return next;
+    });
+  };
+
+  const setPickerMinuteValue = (minute: number) => {
+    setPickerTime((current) => {
+      const next = new Date(current);
+      next.setMinutes(minute, 0, 0);
+      return next;
+    });
+  };
+
+  const setPickerPeriod = (period: (typeof TIME_PERIODS)[number]) => {
+    setPickerTime((current) => {
+      const next = new Date(current);
+      const hour12 = next.getHours() % 12;
+      next.setHours((period === 'PM' ? 12 : 0) + hour12, next.getMinutes(), 0, 0);
+      return next;
+    });
+  };
+
+  const openTimePicker = () => {
+    setPickerTime(new Date(time));
+    setShowTimePicker(true);
+  };
+
+  const closeTimePicker = () => {
+    setShowTimePicker(false);
+    setPickerTime(new Date(time));
+  };
+
+  const commitPickerTime = () => {
+    setTime(new Date(pickerTime));
+    setShowTimePicker(false);
   };
 
   const handleOnceDateChange = (_: any, selectedDate?: Date) => {
@@ -297,6 +355,11 @@ export default function AddScreen() {
       return;
     }
 
+    if (frequency === 'custom_interval' && intervalValue < 1) {
+      Alert.alert('Add an interval', 'Please choose how often the custom reminder should repeat.');
+      return;
+    }
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setIsSaving(true);
 
@@ -310,8 +373,13 @@ export default function AddScreen() {
         time_hour: time.getHours(),
         time_minute: time.getMinutes(),
         day_of_week: frequency === 'weekly' ? dayOfWeek : undefined,
-        day_of_month: frequency === 'monthly' ? dayOfMonth : undefined,
+        day_of_month:
+          frequency === 'monthly' || (frequency === 'custom_interval' && intervalUnit === 'month')
+            ? dayOfMonth
+            : undefined,
         once_date: frequency === 'once' ? formatDateKey(onceDate) : undefined,
+        interval_value: frequency === 'custom_interval' ? intervalValue : undefined,
+        interval_unit: frequency === 'custom_interval' ? intervalUnit : undefined,
         sound_id: selectedSoundRecord?.id ?? undefined,
       });
 
@@ -320,12 +388,16 @@ export default function AddScreen() {
       setDescription('');
       setSelectedType('food');
       setFrequency('daily');
-      setTime(createCurrentReminderTime());
+      setIntervalValue(2);
+      setIntervalUnit('day');
+      const resetTime = createCurrentReminderTime();
+      setTime(resetTime);
+      setPickerTime(resetTime);
       setOnceDate(new Date());
       setSelectedSound(sounds[0]?.id ?? null);
       
       Alert.alert('Blooming! 🌸', 'Your reminder has been created.');
-    } catch (err) {
+    } catch {
       Alert.alert('Oops', 'Something went wrong. Please try again.');
     } finally {
       setIsSaving(false);
@@ -335,7 +407,11 @@ export default function AddScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <LinearGradient
-        colors={[Colors.surface, Colors.tertiary, Colors.surface_container_low]}
+        colors={
+          isGoldenTheme
+            ? [colors.surface, '#FFF4CC', colors.surface_container_low]
+            : [colors.surface, colors.tertiary, colors.surface_container_low]
+        }
         locations={[0, 0.3, 1]}
         style={StyleSheet.absoluteFill}
       />
@@ -343,6 +419,18 @@ export default function AddScreen() {
       {/* ── Decorative blobs ─────────────────────── */}
       <View style={[styles.blob, styles.blobTop]} />
       <View style={[styles.blob, styles.blobBottom]} />
+      <MaterialCommunityIcons
+        name={visuals.add.backgroundTop}
+        size={112}
+        color={`${colors.primary}16`}
+        style={styles.backgroundIconTop}
+      />
+      <MaterialCommunityIcons
+        name={visuals.add.backgroundBottom}
+        size={126}
+        color={`${colors.secondary}14`}
+        style={styles.backgroundIconBottom}
+      />
 
       {/* ── Header ───────────────────────────────── */}
       <Animated.View 
@@ -350,15 +438,19 @@ export default function AddScreen() {
         style={styles.header}
       >
         <LinearGradient
-          colors={[`${Colors.primary_fixed}F5`, `${Colors.primary_fixed}D8`]}
+          colors={
+            isGoldenTheme
+              ? [`${colors.surface}F2`, `${colors.surface_container_low}E5`]
+              : [`${colors.primary_fixed}F5`, `${colors.primary_fixed}D8`]
+          }
           style={styles.headerGradient}
         >
           <View style={styles.headerRow}>
             <View style={styles.headerEmojiBadge}>
               <MaterialCommunityIcons
-                name="flower-tulip-outline"
+                name={visuals.add.headerIcon}
                 size={17}
-                color={Colors.primary_fixed_variant}
+                color={colors.primary_fixed_variant}
               />
             </View>
             <Text style={styles.headerTitle}>New Reminder</Text>
@@ -372,17 +464,18 @@ export default function AddScreen() {
           styles.scrollContent,
           { paddingBottom: 120 + insets.bottom },
         ]}
+        nestedScrollEnabled
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
         {/* ── Welcome ────────────────────────────── */}
         <Animated.View entering={FadeInDown.duration(500).delay(100)} style={styles.section}>
           <Text style={styles.heroTitle}>
-            Let's set a{'\n'}
-            <Text style={{ color: Colors.primary }}>gentle nudge</Text>.
+            Let&apos;s set a{'\n'}
+            <Text style={{ color: colors.primary }}>gentle nudge</Text>.
           </Text>
           <Text style={styles.heroSubtitle}>
-            Take your time. There's no rush in caring for yourself.
+            Take your time. There&apos;s no rush in caring for yourself.
           </Text>
         </Animated.View>
 
@@ -413,7 +506,7 @@ export default function AddScreen() {
                   <MaterialCommunityIcons
                     name={type.materialIcon as any}
                     size={32}
-                    color={Colors.primary}
+                    color={colors.primary}
                     style={[isSelected && { transform: [{ scale: 1.1 }] }]}
                   />
                   <Text style={styles.typeLabel}>{type.label}</Text>
@@ -445,7 +538,7 @@ export default function AddScreen() {
                   <MaterialCommunityIcons
                     name={type.materialIcon as any}
                     size={32}
-                    color={Colors.primary}
+                    color={colors.primary}
                     style={[isSelected && { transform: [{ scale: 1.1 }] }]}
                   />
                   <Text style={styles.typeLabel}>{type.label}</Text>
@@ -461,7 +554,7 @@ export default function AddScreen() {
           <TextInput
             style={styles.input}
             placeholder={isCustom ? 'e.g., Morning Pills' : `e.g., ${getDefaultName(selectedType)}`}
-            placeholderTextColor={Colors.outline}
+            placeholderTextColor={colors.outline}
             value={name}
             onChangeText={setName}
             maxLength={60}
@@ -475,7 +568,7 @@ export default function AddScreen() {
           <TextInput
             style={[styles.input, styles.inputMultiline]}
             placeholder="e.g., Take with a light snack"
-            placeholderTextColor={Colors.outline}
+            placeholderTextColor={colors.outline}
             value={description}
             onChangeText={setDescription}
             maxLength={200}
@@ -491,52 +584,135 @@ export default function AddScreen() {
           <Text style={styles.stepLabel}>2. AT WHAT TIME?</Text>
           <TouchableOpacity
             style={styles.timePickerCard}
-            onPress={() => setShowTimePicker(true)}
+            onPress={() => (showTimePicker ? closeTimePicker() : openTimePicker())}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel={`Selected time: ${time.getHours() % 12 || 12}:${time.getMinutes().toString().padStart(2, '0')} ${time.getHours() >= 12 ? 'PM' : 'AM'}`}
+            accessibilityLabel={`Selected time: ${displayedTime.getHours() % 12 || 12}:${displayedTime.getMinutes().toString().padStart(2, '0')} ${displayedTime.getHours() >= 12 ? 'PM' : 'AM'}`}
           >
             <View style={styles.timeDisplay}>
               <Text style={styles.timeDigits}>
-                {(time.getHours() % 12 || 12).toString().padStart(2, '0')}
+                {getDisplayHour(displayedTime).toString().padStart(2, '0')}
               </Text>
               <Text style={styles.timeColon}>:</Text>
               <Text style={styles.timeDigits}>
-                {time.getMinutes().toString().padStart(2, '0')}
+                {displayedTime.getMinutes().toString().padStart(2, '0')}
               </Text>
               <View style={styles.amPmContainer}>
                 <View style={[
                   styles.amPmPill,
-                  time.getHours() < 12 && styles.amPmPillActive,
+                  getDisplayPeriod(displayedTime) === 'AM' && styles.amPmPillActive,
                 ]}>
                   <Text style={[
                     styles.amPmText,
-                    time.getHours() < 12 && styles.amPmTextActive,
+                    getDisplayPeriod(displayedTime) === 'AM' && styles.amPmTextActive,
                   ]}>AM</Text>
                 </View>
                 <View style={[
                   styles.amPmPill,
-                  time.getHours() >= 12 && styles.amPmPillActive,
+                  getDisplayPeriod(displayedTime) === 'PM' && styles.amPmPillActive,
                 ]}>
                   <Text style={[
                     styles.amPmText,
-                    time.getHours() >= 12 && styles.amPmTextActive,
+                    getDisplayPeriod(displayedTime) === 'PM' && styles.amPmTextActive,
                   ]}>PM</Text>
                 </View>
               </View>
             </View>
-            <Text style={styles.tapHint}>Tap to change time</Text>
+            <Text style={styles.tapHint}>
+              {showTimePicker ? 'Scroll gently, then tap done' : 'Tap to open time scroller'}
+            </Text>
           </TouchableOpacity>
 
           {showTimePicker && (
-            <DateTimePicker
-              value={time}
-              mode="time"
-              is24Hour={false}
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={handleTimeChange}
-              themeVariant="light"
-            />
+            <View style={styles.inlineTimePickerCard}>
+              <View style={styles.timeWheelGrid}>
+                <View style={styles.timeWheelColumnWrap}>
+                  <Text style={styles.timeWheelLabel}>Hour</Text>
+                  <ScrollView style={styles.timeWheelColumn} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                    {TIME_HOURS.map((hour) => {
+                      const isSelected = getDisplayHour(pickerTime) === hour;
+                      return (
+                        <TouchableOpacity
+                          key={`hour-${hour}`}
+                          style={[styles.timeWheelOption, isSelected && styles.timeWheelOptionActive]}
+                          onPress={() => setPickerHour(hour)}
+                          activeOpacity={0.8}
+                        >
+                          <Text
+                            style={[styles.timeWheelOptionText, isSelected && styles.timeWheelOptionTextActive]}
+                          >
+                            {hour.toString().padStart(2, '0')}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.timeWheelColumnWrap}>
+                  <Text style={styles.timeWheelLabel}>Minute</Text>
+                  <ScrollView style={styles.timeWheelColumn} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                    {TIME_MINUTES.map((minute) => {
+                      const isSelected = pickerTime.getMinutes() === minute;
+                      return (
+                        <TouchableOpacity
+                          key={`minute-${minute}`}
+                          style={[styles.timeWheelOption, isSelected && styles.timeWheelOptionActive]}
+                          onPress={() => setPickerMinuteValue(minute)}
+                          activeOpacity={0.8}
+                        >
+                          <Text
+                            style={[styles.timeWheelOptionText, isSelected && styles.timeWheelOptionTextActive]}
+                          >
+                            {minute.toString().padStart(2, '0')}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.timeWheelColumnWrap}>
+                  <Text style={styles.timeWheelLabel}>Period</Text>
+                  <ScrollView style={styles.timeWheelColumn} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                    {TIME_PERIODS.map((period) => {
+                      const isSelected = getDisplayPeriod(pickerTime) === period;
+                      return (
+                        <TouchableOpacity
+                          key={period}
+                          style={[styles.timeWheelOption, isSelected && styles.timeWheelOptionActive]}
+                          onPress={() => setPickerPeriod(period)}
+                          activeOpacity={0.8}
+                        >
+                          <Text
+                            style={[styles.timeWheelOptionText, isSelected && styles.timeWheelOptionTextActive]}
+                          >
+                            {period}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              </View>
+
+              <View style={styles.timePickerActions}>
+                <TouchableOpacity
+                  style={styles.inlineTimeCancelButton}
+                  onPress={closeTimePicker}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.inlineTimeCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.inlineTimeDoneButton}
+                  onPress={commitPickerTime}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.inlineTimeDoneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           )}
         </Animated.View>
 
@@ -608,6 +784,7 @@ export default function AddScreen() {
               <Text style={styles.daySelectorLabel}>Which date?</Text>
               <ScrollView
                 horizontal
+                nestedScrollEnabled
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.monthDayScroll}
               >
@@ -635,6 +812,84 @@ export default function AddScreen() {
             </Animated.View>
           )}
 
+          {frequency === 'custom_interval' && (
+            <Animated.View entering={FadeInDown.duration(300)} style={styles.daySelector}>
+              <Text style={styles.daySelectorLabel}>How often should it repeat?</Text>
+
+              <View style={styles.customIntervalRow}>
+                <TouchableOpacity
+                  style={styles.intervalAdjustButton}
+                  onPress={() => setIntervalValue((current) => Math.max(1, current - 1))}
+                  activeOpacity={0.8}
+                >
+                  <MaterialCommunityIcons name="minus" size={20} color={colors.primary_fixed_variant} />
+                </TouchableOpacity>
+
+                <View style={styles.intervalValueCard}>
+                  <Text style={styles.intervalValue}>{intervalValue}</Text>
+                  <Text style={styles.intervalValueLabel}>Repeat gap</Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.intervalAdjustButton}
+                  onPress={() => setIntervalValue((current) => Math.min(31, current + 1))}
+                  activeOpacity={0.8}
+                >
+                  <MaterialCommunityIcons name="plus" size={20} color={colors.primary_fixed_variant} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.intervalUnitRow}>
+                <TouchableOpacity
+                  style={[styles.intervalUnitPill, intervalUnit === 'day' && styles.intervalUnitPillActive]}
+                  onPress={() => setIntervalUnit('day')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.intervalUnitText, intervalUnit === 'day' && styles.intervalUnitTextActive]}>
+                    Every {intervalValue} day{intervalValue === 1 ? '' : 's'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.intervalUnitPill, intervalUnit === 'month' && styles.intervalUnitPillActive]}
+                  onPress={() => setIntervalUnit('month')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.intervalUnitText, intervalUnit === 'month' && styles.intervalUnitTextActive]}>
+                    Every {intervalValue} month{intervalValue === 1 ? '' : 's'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {intervalUnit === 'month' && (
+                <>
+                  <Text style={styles.daySelectorLabel}>On which day of the month?</Text>
+                  <ScrollView
+                    horizontal
+                    nestedScrollEnabled
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.monthDayScroll}
+                  >
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => {
+                      const isSelected = dayOfMonth === d;
+                      return (
+                        <TouchableOpacity
+                          key={`custom-${d}`}
+                          style={[styles.monthDayCircle, isSelected && styles.monthDayCircleActive]}
+                          onPress={() => setDayOfMonth(d)}
+                        >
+                          <Text style={[styles.monthDayText, isSelected && styles.monthDayTextActive]}>
+                            {d}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </>
+              )}
+            </Animated.View>
+          )}
+
           {frequency === 'once' && (
             <Animated.View entering={FadeInDown.duration(300)} style={styles.daySelector}>
               <Text style={styles.daySelectorLabel}>Which day?</Text>
@@ -649,7 +904,7 @@ export default function AddScreen() {
                   <Text style={styles.onceDateValue}>{formatReminderDate(formatDateKey(onceDate))}</Text>
                   <Text style={styles.onceDateHint}>Tap to choose a one-time reminder date</Text>
                 </View>
-                <MaterialCommunityIcons name="calendar-month-outline" size={24} color={Colors.primary} />
+                <MaterialCommunityIcons name="calendar-month-outline" size={24} color={colors.primary} />
               </TouchableOpacity>
 
               {showOnceDatePicker && (
@@ -677,7 +932,7 @@ export default function AddScreen() {
               activeOpacity={0.7}
               onPress={() => setIsStudioOpen(true)}
             >
-              <MaterialCommunityIcons name="microphone" size={22} color={Colors.on_surface} />
+              <MaterialCommunityIcons name="microphone" size={22} color={colors.on_surface} />
               <Text style={styles.soundActionText}>Record Voice</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -686,7 +941,7 @@ export default function AddScreen() {
               onPress={handleUploadSound}
               disabled={isUploadingSound}
             >
-              <MaterialCommunityIcons name="upload" size={22} color={Colors.on_surface} />
+              <MaterialCommunityIcons name="upload" size={22} color={colors.on_surface} />
               <Text style={styles.soundActionText}>
                 {isUploadingSound ? 'Uploading...' : 'Upload Clip'}
               </Text>
@@ -695,16 +950,27 @@ export default function AddScreen() {
 
           <View style={styles.soundHeroCard}>
             <LinearGradient
-              colors={['#FFE2EB', '#FFF7F9']}
+              colors={
+                isGoldenTheme
+                  ? ['#FFE39B', '#FFEFC8']
+                  : [colors.primary_fixed, colors.surface_container_lowest]
+              }
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.soundHeroGradient}
             >
+              <View style={styles.soundHeroArt}>
+                <MaterialCommunityIcons
+                  name={visuals.add.soundHeroIcon}
+                  size={24}
+                  color={colors.primary_fixed_variant}
+                />
+              </View>
               <View style={styles.soundHeroCopy}>
-                <Text style={styles.soundHeroTitle}>Sakura listens softly.</Text>
+                <Text style={styles.soundHeroTitle}>{visuals.add.soundHeroTitle}</Text>
                 <Text style={styles.soundHeroSubtitle}>
                   Bundled sounds ring inside notifications now. Recorded and uploaded clips are
-                  saved, previewable, and ready in your sound garden.
+                  saved, previewable, and ready in your sound library.
                 </Text>
               </View>
               <View style={styles.soundHeroBadge}>
@@ -715,7 +981,7 @@ export default function AddScreen() {
 
           <View style={styles.soundList}>
             {soundsLoading ? (
-              <Text style={styles.soundLoadingText}>Preparing your sound garden...</Text>
+              <Text style={styles.soundLoadingText}>Preparing your sound library...</Text>
             ) : (
               sounds.map((sound) => {
                 const isSelected = selectedSound === sound.id;
@@ -756,14 +1022,14 @@ export default function AddScreen() {
                       <MaterialCommunityIcons
                         name={isPreviewing ? 'pause' : 'play'}
                         size={18}
-                        color={isPreviewing ? Colors.on_primary : Colors.primary}
+                        color={isPreviewing ? colors.on_primary : colors.primary}
                       />
                     </TouchableOpacity>
 
                     <MaterialCommunityIcons
                       name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
                       size={24}
-                      color={isSelected ? Colors.primary : Colors.outline}
+                      color={isSelected ? colors.primary : colors.outline}
                     />
                   </TouchableOpacity>
                 );
@@ -783,7 +1049,7 @@ export default function AddScreen() {
             accessibilityLabel="Create reminder"
           >
             <LinearGradient
-              colors={[Colors.primary, Colors.primary_fixed_variant]}
+              colors={isGoldenTheme ? [colors.primary, '#F68A2F'] : [colors.primary, colors.primary_fixed_variant]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.ctaGradient}
@@ -794,12 +1060,12 @@ export default function AddScreen() {
               <MaterialCommunityIcons
                 name="check-circle"
                 size={24}
-                color={Colors.on_primary}
+                color={colors.on_primary}
               />
             </LinearGradient>
           </TouchableOpacity>
 
-          <QuoteFooter scope="add-tab-footer" shift={2} />
+          {!isGoldenTheme ? <QuoteFooter scope="add-tab-footer" shift={2} /> : null}
         </Animated.View>
       </ScrollView>
 
@@ -813,10 +1079,11 @@ export default function AddScreen() {
 }
 
 // ─── Styles ────────────────────────────────────────────
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
   },
   scrollView: {
     flex: 1,
@@ -834,7 +1101,7 @@ const styles = StyleSheet.create({
   blobTop: {
     width: 300,
     height: 300,
-    backgroundColor: Colors.primary_container,
+    backgroundColor: colors.primary_container,
     top: -80,
     left: -60,
     transform: [{ rotate: '15deg' }],
@@ -843,10 +1110,22 @@ const styles = StyleSheet.create({
   blobBottom: {
     width: 250,
     height: 250,
-    backgroundColor: Colors.primary_fixed,
+    backgroundColor: colors.primary_fixed,
     bottom: 100,
     right: -40,
     ...({ filter: 'blur(60px)' }),
+  },
+  backgroundIconTop: {
+    position: 'absolute',
+    top: 88,
+    right: -20,
+    opacity: 0.9,
+  },
+  backgroundIconBottom: {
+    position: 'absolute',
+    bottom: 148,
+    left: -24,
+    opacity: 0.72,
   },
 
   // Header
@@ -871,13 +1150,13 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary_container,
+    backgroundColor: colors.primary_container,
     ...Elevation.low,
   },
   headerTitle: {
     fontFamily: FontFamily.bold,
     fontSize: 22,
-    color: Colors.primary,
+    color: colors.primary,
     letterSpacing: 0.2,
   },
 
@@ -889,7 +1168,7 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.bold,
     fontSize: 36,
     lineHeight: 44,
-    color: Colors.on_surface,
+    color: colors.on_surface,
     letterSpacing: -0.5,
     marginBottom: Spacing.compact,
   },
@@ -897,7 +1176,7 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.regular,
     fontSize: 18,
     lineHeight: 26,
-    color: Colors.on_surface_variant,
+    color: colors.on_surface_variant,
     opacity: 0.8,
   },
 
@@ -905,7 +1184,7 @@ const styles = StyleSheet.create({
   stepLabel: {
     fontFamily: FontFamily.semiBold,
     fontSize: 12,
-    color: Colors.primary,
+    color: colors.primary,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
     marginBottom: Spacing.cozy,
@@ -922,31 +1201,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: Spacing.generous,
-    backgroundColor: Colors.primary_fixed,
+    backgroundColor: colors.primary_fixed,
     borderRadius: Radius.lg,
     minHeight: 100,
     ...Elevation.low,
   },
   typeButtonActive: {
-    backgroundColor: Colors.primary_container,
+    backgroundColor: colors.primary_container,
     ...Elevation.low,
   },
   typeLabel: {
     fontFamily: FontFamily.bold,
     fontSize: 14,
-    color: Colors.on_surface,
+    color: colors.on_surface,
     marginTop: Spacing.compact,
   },
 
   // Input fields
   input: {
-    backgroundColor: Colors.primary_fixed,
+    backgroundColor: colors.primary_fixed,
     borderRadius: Radius.lg,
     paddingHorizontal: Spacing.generous,
     paddingVertical: Spacing.cozy,
     fontFamily: FontFamily.medium,
     fontSize: 18,
-    color: Colors.on_surface,
+    color: colors.on_surface,
     minHeight: TapTargets.minHeight,
   },
   inputMultiline: {
@@ -956,7 +1235,7 @@ const styles = StyleSheet.create({
 
   // Time picker
   timePickerCard: {
-    backgroundColor: Colors.tertiary,
+    backgroundColor: colors.tertiary,
     borderRadius: Radius.lg,
     padding: Spacing.breathe,
     alignItems: 'center',
@@ -970,13 +1249,13 @@ const styles = StyleSheet.create({
   timeDigits: {
     fontFamily: FontFamily.extraBold,
     fontSize: 52,
-    color: Colors.primary,
+    color: colors.primary,
     letterSpacing: 1,
   },
   timeColon: {
     fontFamily: FontFamily.extraBold,
     fontSize: 48,
-    color: Colors.on_surface,
+    color: colors.on_surface,
     marginBottom: 4,
   },
   amPmContainer: {
@@ -989,51 +1268,132 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   amPmPillActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
   },
   amPmText: {
     fontFamily: FontFamily.bold,
     fontSize: 16,
-    color: `${Colors.primary}66`,
+    color: `${colors.primary}66`,
   },
   amPmTextActive: {
-    color: Colors.on_primary,
+    color: colors.on_primary,
   },
   tapHint: {
     fontFamily: FontFamily.medium,
     fontSize: 14,
-    color: Colors.on_surface_variant,
+    color: colors.on_surface_variant,
     marginTop: Spacing.cozy,
     opacity: 0.6,
+  },
+  inlineTimePickerCard: {
+    marginTop: Spacing.cozy,
+    borderRadius: Radius.xl,
+    backgroundColor: colors.surface_container_lowest,
+    paddingHorizontal: Spacing.item,
+    paddingTop: Spacing.compact,
+    paddingBottom: Spacing.item,
+    ...Elevation.low,
+  },
+  timeWheelGrid: {
+    flexDirection: 'row',
+    gap: Spacing.item,
+  },
+  timeWheelColumnWrap: {
+    flex: 1,
+    gap: Spacing.compact,
+  },
+  timeWheelLabel: {
+    fontFamily: FontFamily.bold,
+    fontSize: 13,
+    color: colors.primary_fixed_variant,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  timeWheelColumn: {
+    maxHeight: 220,
+  },
+  timeWheelOption: {
+    minHeight: 46,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.compact,
+    backgroundColor: colors.surface_container_low,
+  },
+  timeWheelOptionActive: {
+    backgroundColor: colors.primary_container,
+  },
+  timeWheelOptionText: {
+    fontFamily: FontFamily.bold,
+    fontSize: 17,
+    color: colors.on_surface_variant,
+  },
+  timeWheelOptionTextActive: {
+    color: colors.primary_fixed_variant,
+  },
+  timePickerActions: {
+    flexDirection: 'row',
+    gap: Spacing.item,
+    marginTop: Spacing.compact,
+  },
+  inlineTimeCancelButton: {
+    flex: 1,
+    minHeight: 42,
+    paddingHorizontal: Spacing.generous,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface_container_low,
+  },
+  inlineTimeCancelText: {
+    fontFamily: FontFamily.bold,
+    fontSize: 15,
+    color: colors.on_surface_variant,
+  },
+  inlineTimeDoneButton: {
+    flex: 1,
+    minHeight: 42,
+    paddingHorizontal: Spacing.generous,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary_container,
+  },
+  inlineTimeDoneText: {
+    fontFamily: FontFamily.bold,
+    fontSize: 15,
+    color: colors.primary_fixed_variant,
   },
 
   // Frequency
   frequencyRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.item,
     marginBottom: Spacing.cozy,
   },
   frequencyPill: {
-    flex: 1,
+    minWidth: '30%',
     height: TapTargets.minHeight,
     borderRadius: Radius.full,
-    backgroundColor: Colors.primary_fixed,
+    backgroundColor: colors.primary_fixed,
     alignItems: 'center',
     justifyContent: 'center',
     ...Elevation.low,
   },
   frequencyPillActive: {
-    backgroundColor: Colors.primary_container,
+    backgroundColor: colors.primary_container,
     borderWidth: 1,
-    borderColor: `${Colors.primary}22`,
+    borderColor: `${colors.primary}22`,
   },
   frequencyText: {
     fontFamily: FontFamily.bold,
     fontSize: 16,
-    color: Colors.on_surface_variant,
+    color: colors.on_surface_variant,
   },
   frequencyTextActive: {
-    color: Colors.primary,
+    color: colors.primary,
   },
 
   // Day of week selector
@@ -1043,8 +1403,69 @@ const styles = StyleSheet.create({
   daySelectorLabel: {
     fontFamily: FontFamily.medium,
     fontSize: 16,
-    color: Colors.on_surface_variant,
+    color: colors.on_surface_variant,
     marginBottom: Spacing.item,
+  },
+  customIntervalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.item,
+    marginBottom: Spacing.cozy,
+  },
+  intervalAdjustButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary_fixed,
+    ...Elevation.low,
+  },
+  intervalValueCard: {
+    flex: 1,
+    minHeight: 74,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.tertiary,
+    paddingHorizontal: Spacing.item,
+  },
+  intervalValue: {
+    fontFamily: FontFamily.extraBold,
+    fontSize: 32,
+    color: colors.primary,
+  },
+  intervalValueLabel: {
+    marginTop: 2,
+    fontFamily: FontFamily.medium,
+    fontSize: 13,
+    color: colors.on_surface_variant,
+  },
+  intervalUnitRow: {
+    flexDirection: 'row',
+    gap: Spacing.item,
+    marginBottom: Spacing.cozy,
+  },
+  intervalUnitPill: {
+    flex: 1,
+    minHeight: TapTargets.minHeight,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.item,
+    backgroundColor: colors.primary_fixed,
+  },
+  intervalUnitPillActive: {
+    backgroundColor: colors.primary_container,
+  },
+  intervalUnitText: {
+    fontFamily: FontFamily.bold,
+    fontSize: 14,
+    color: colors.on_surface_variant,
+    textAlign: 'center',
+  },
+  intervalUnitTextActive: {
+    color: colors.primary_fixed_variant,
   },
   dayRow: {
     flexDirection: 'row',
@@ -1055,20 +1476,20 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.primary_fixed,
+    backgroundColor: colors.primary_fixed,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dayCircleActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
   },
   dayCircleText: {
     fontFamily: FontFamily.semiBold,
     fontSize: 15,
-    color: Colors.on_surface,
+    color: colors.on_surface,
   },
   dayCircleTextActive: {
-    color: Colors.on_primary,
+    color: colors.on_primary,
   },
 
   // Month day picker
@@ -1080,23 +1501,23 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.primary_fixed,
+    backgroundColor: colors.primary_fixed,
     alignItems: 'center',
     justifyContent: 'center',
   },
   monthDayCircleActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
   },
   monthDayText: {
     fontFamily: FontFamily.semiBold,
     fontSize: 14,
-    color: Colors.on_surface,
+    color: colors.on_surface,
   },
   monthDayTextActive: {
-    color: Colors.on_primary,
+    color: colors.on_primary,
   },
   onceDateCard: {
-    backgroundColor: Colors.tertiary,
+    backgroundColor: colors.tertiary,
     borderRadius: Radius.lg,
     paddingHorizontal: Spacing.generous,
     paddingVertical: Spacing.cozy,
@@ -1109,13 +1530,13 @@ const styles = StyleSheet.create({
   onceDateValue: {
     fontFamily: FontFamily.bold,
     fontSize: 18,
-    color: Colors.on_surface,
+    color: colors.on_surface,
     marginBottom: 4,
   },
   onceDateHint: {
     fontFamily: FontFamily.medium,
     fontSize: 14,
-    color: Colors.on_surface_variant,
+    color: colors.on_surface_variant,
   },
 
   // Sound
@@ -1131,17 +1552,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.compact,
-    backgroundColor: Colors.primary_fixed,
+    backgroundColor: colors.primary_fixed,
     borderRadius: Radius.lg,
     ...Elevation.low,
   },
   soundActionBtnSecondary: {
-    backgroundColor: Colors.tertiary,
+    backgroundColor: colors.tertiary,
   },
   soundActionText: {
     fontFamily: FontFamily.bold,
     fontSize: 14,
-    color: Colors.on_surface,
+    color: colors.on_surface,
   },
   soundHeroCard: {
     borderRadius: Radius.xl,
@@ -1156,20 +1577,28 @@ const styles = StyleSheet.create({
     gap: Spacing.item,
     padding: Spacing.generous,
   },
+  soundHeroArt: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary_container,
+  },
   soundHeroCopy: {
     flex: 1,
   },
   soundHeroTitle: {
     fontFamily: FontFamily.bold,
     fontSize: 19,
-    color: Colors.on_surface,
+    color: colors.on_surface,
     marginBottom: 6,
   },
   soundHeroSubtitle: {
     fontFamily: FontFamily.medium,
     fontSize: 14,
     lineHeight: 21,
-    color: Colors.on_surface_variant,
+    color: colors.on_surface_variant,
   },
   soundHeroBadge: {
     minWidth: 74,
@@ -1178,15 +1607,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: Radius.full,
-    backgroundColor: Colors.surface_container_lowest,
+    backgroundColor: colors.surface_container_lowest,
   },
   soundHeroBadgeText: {
     fontFamily: FontFamily.bold,
     fontSize: 13,
-    color: Colors.primary,
+    color: colors.primary,
   },
   soundList: {
-    backgroundColor: Colors.tertiary,
+    backgroundColor: colors.tertiary,
     borderRadius: Radius.lg,
     padding: Spacing.cozy,
     gap: Spacing.compact,
@@ -1194,7 +1623,7 @@ const styles = StyleSheet.create({
   soundLoadingText: {
     fontFamily: FontFamily.medium,
     fontSize: 15,
-    color: Colors.on_surface_variant,
+    color: colors.on_surface_variant,
     paddingVertical: Spacing.cozy,
   },
   soundItem: {
@@ -1206,9 +1635,9 @@ const styles = StyleSheet.create({
     gap: Spacing.cozy,
   },
   soundItemActive: {
-    backgroundColor: Colors.primary_fixed,
+    backgroundColor: colors.primary_fixed,
     borderWidth: 1,
-    borderColor: `${Colors.primary}1A`,
+    borderColor: `${colors.primary}1A`,
     ...Elevation.low,
   },
   soundIconBubble: {
@@ -1227,12 +1656,12 @@ const styles = StyleSheet.create({
   soundName: {
     fontFamily: FontFamily.bold,
     fontSize: 16,
-    color: Colors.on_surface,
+    color: colors.on_surface,
   },
   soundCaption: {
     fontFamily: FontFamily.medium,
     fontSize: 13,
-    color: Colors.on_surface_variant,
+    color: colors.on_surface_variant,
     marginTop: 3,
   },
   previewButton: {
@@ -1241,10 +1670,10 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary_container,
+    backgroundColor: colors.primary_container,
   },
   previewButtonActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
   },
 
   // CTA
@@ -1268,7 +1697,9 @@ const styles = StyleSheet.create({
   ctaText: {
     fontFamily: FontFamily.bold,
     fontSize: 20,
-    color: Colors.on_primary,
+    color: colors.on_primary,
     letterSpacing: 0.3,
   },
 });
+
+

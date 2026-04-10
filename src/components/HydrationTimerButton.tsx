@@ -23,6 +23,7 @@ import { Colors } from '../theme/colors';
 import { Elevation } from '../theme/elevation';
 import { Radius, Spacing, TapTargets } from '../theme/spacing';
 import { useTheme } from '../theme/ThemeContext';
+import { getThemeVisuals } from '../theme/visuals';
 import { FontFamily } from '../theme/typography';
 
 const TIMER_OPTIONS = [
@@ -37,6 +38,7 @@ const TIMER_OPTIONS = [
 export default function HydrationTimerButton() {
   const {
     colors,
+    themeName,
     hydrationTimerSeconds,
     hydrationTimeRemaining,
     isHydrationTimerRunning,
@@ -45,6 +47,7 @@ export default function HydrationTimerButton() {
   } = useTheme();
   const [showOverlay, setShowOverlay] = useState(false);
   const styles = createStyles(colors);
+  const visuals = getThemeVisuals(themeName);
 
   const pulseScale = useSharedValue(1);
   const dropBounce = useSharedValue(1);
@@ -126,7 +129,7 @@ export default function HydrationTimerButton() {
 
         <View pointerEvents="none" style={styles.dropIconOverlay}>
           <MaterialCommunityIcons
-            name={isHydrationTimerRunning ? 'water' : 'water-outline'}
+            name={isHydrationTimerRunning ? visuals.hydration.activeIcon : visuals.hydration.idleIcon}
             size={22}
             color={isHydrationTimerRunning ? colors.primary : colors.primary_fixed_variant}
           />

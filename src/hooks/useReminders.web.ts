@@ -67,6 +67,26 @@ function isReminderDueToday(reminder: Reminder, today: Date) {
   if (reminder.frequency === 'weekly') return reminder.day_of_week === today.getDay();
   if (reminder.frequency === 'monthly') return reminder.day_of_month === today.getDate();
   if (reminder.frequency === 'once') return reminder.once_date === formatDateKey(today);
+  if (reminder.frequency === 'custom_interval') {
+    if (!reminder.interval_value || !reminder.interval_unit) {
+      return false;
+    }
+
+    const startDate = new Date(reminder.created_at.replace(' ', 'T'));
+    startDate.setHours(0, 0, 0, 0);
+    const compareDate = new Date(today);
+    compareDate.setHours(0, 0, 0, 0);
+
+    if (reminder.interval_unit === 'day') {
+      const diffDays = Math.floor((compareDate.getTime() - startDate.getTime()) / 86400000);
+      return diffDays >= 0 && diffDays % reminder.interval_value === 0;
+    }
+
+    const diffMonths =
+      (compareDate.getFullYear() - startDate.getFullYear()) * 12 +
+      (compareDate.getMonth() - startDate.getMonth());
+    return reminder.day_of_month === today.getDate() && diffMonths >= 0 && diffMonths % reminder.interval_value === 0;
+  }
   return false;
 }
 
@@ -120,6 +140,8 @@ export function useReminders() {
         day_of_week: input.day_of_week ?? null,
         day_of_month: input.day_of_month ?? null,
         once_date: input.once_date ?? null,
+        interval_value: input.interval_value ?? null,
+        interval_unit: input.interval_unit ?? null,
         sound_id: input.sound_id ?? null,
         is_active: 1,
         created_at: timestamp,

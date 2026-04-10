@@ -57,9 +57,155 @@ export const CherryBlossom = {
   on_error_container:       '#410002',
 } as const;
 
+export const AquaticSerenity = {
+  primary:                  '#475D82',
+  primary_container:        '#C7D8F1',
+  primary_fixed:            '#D9E7FA',
+  primary_fixed_variant:    '#3D5478',
+  on_primary:               '#FFFFFF',
+  on_primary_container:     '#11243D',
+
+  secondary:                '#2B6485',
+  secondary_container:      '#C8EAF7',
+  on_secondary:             '#FFFFFF',
+  on_secondary_container:   '#0B2B3C',
+
+  tertiary:                 '#A8DADC',
+  on_tertiary:              '#244C56',
+
+  neutral:                  '#4E5A57',
+
+  surface:                  '#F3FCF0',
+  surface_container_lowest: '#FCFFFB',
+  surface_container_low:    '#EDF6EA',
+  surface_container:        '#E5EFE3',
+  surface_container_high:   '#DCE5D9',
+  surface_container_highest:'#D2DDD1',
+
+  on_surface:               '#161D16',
+  on_surface_variant:       '#5A6A63',
+
+  outline:                  '#8FA3A7',
+  outline_variant:          '#C1C7CE',
+
+  success:                  '#4F8C7A',
+  success_soft:             '#DCEFE8',
+
+  error:                    '#B3261E',
+  error_container:          '#F9DEDC',
+  on_error:                 '#FFFFFF',
+  on_error_container:       '#410E0B',
+} as const;
+
+export const JungleDeep = {
+  primary:                  '#556B2F',
+  primary_container:        '#D7E7B3',
+  primary_fixed:            '#EEF5D8',
+  primary_fixed_variant:    '#3E5219',
+  on_primary:               '#FFFFFF',
+  on_primary_container:     '#233007',
+
+  secondary:                '#8B4513',
+  secondary_container:      '#FFD9C2',
+  on_secondary:             '#FFFFFF',
+  on_secondary_container:   '#3D1A05',
+
+  tertiary:                 '#A9BA9D',
+  on_tertiary:              '#34422B',
+
+  neutral:                  '#5F5D3C',
+
+  surface:                  '#F5F5DC',
+  surface_container_lowest: '#FCFCEE',
+  surface_container_low:    '#F2F1D7',
+  surface_container:        '#ECEACD',
+  surface_container_high:   '#E4E4CC',
+  surface_container_highest:'#D7D9BF',
+
+  on_surface:               '#1B1D0E',
+  on_surface_variant:       '#5D614D',
+
+  outline:                  '#9AA184',
+  outline_variant:          '#C5C8B8',
+
+  success:                  '#556B2F',
+  success_soft:             '#E2EAD3',
+
+  error:                    '#BA1A1A',
+  error_container:          '#FFDAD6',
+  on_error:                 '#FFFFFF',
+  on_error_container:       '#410002',
+} as const;
+
+export const GoldenSun = {
+  primary:                  '#904800',
+  primary_container:        '#F1C40F',
+  primary_fixed:            '#FFF2BF',
+  primary_fixed_variant:    '#904800',
+  on_primary:               '#FFF0E8',
+  on_primary_container:     '#594700',
+
+  secondary:                '#6F5900',
+  secondary_container:      '#FED023',
+  on_secondary:             '#FFF9E6',
+  on_secondary_container:   '#594700',
+
+  tertiary:                 '#FFCC80',
+  on_tertiary:              '#7A4A00',
+
+  neutral:                  '#7A684C',
+
+  surface:                  '#FCF6E3',
+  surface_container_lowest: '#FFFFFF',
+  surface_container_low:    '#F7F1DC',
+  surface_container:        '#F2EAD1',
+  surface_container_high:   '#EAE1C5',
+  surface_container_highest:'#DFD5B7',
+
+  on_surface:               '#312F23',
+  on_surface_variant:       '#7E7056',
+
+  outline:                  '#A28D6E',
+  outline_variant:          '#B2AD9C',
+
+  success:                  '#B18E00',
+  success_soft:             '#FFF3B8',
+
+  error:                    '#BA1A1A',
+  error_container:          '#FFDAD6',
+  on_error:                 '#FFFFFF',
+  on_error_container:       '#410002',
+} as const;
+
 /**
  * Active theme — for now always Cherry Blossom.
  * Future themes (Sky/Ocean, Jungle, Golden Sun) will follow this same shape.
  */
-export type ThemeColors = typeof CherryBlossom;
-export const Colors = CherryBlossom;
+export type ThemeColors = {
+  [Key in keyof typeof CherryBlossom]: string;
+};
+export type ThemeName = 'cherry_blossom' | 'aquatic_serenity' | 'jungle_deep' | 'golden_sun';
+
+export const DEFAULT_THEME_NAME: ThemeName = 'aquatic_serenity';
+
+export const ThemePalettes: Record<ThemeName, ThemeColors> = {
+  cherry_blossom: CherryBlossom,
+  aquatic_serenity: AquaticSerenity,
+  jungle_deep: JungleDeep,
+  golden_sun: GoldenSun,
+};
+
+export function isThemeName(value: string | null | undefined): value is ThemeName {
+  return (
+    value === 'cherry_blossom' ||
+    value === 'aquatic_serenity' ||
+    value === 'jungle_deep' ||
+    value === 'golden_sun'
+  );
+}
+
+export function getThemeColors(themeName: ThemeName | string): ThemeColors {
+  return ThemePalettes[(themeName as ThemeName) ?? DEFAULT_THEME_NAME] ?? ThemePalettes[DEFAULT_THEME_NAME];
+}
+
+export const Colors: ThemeColors = CherryBlossom;
